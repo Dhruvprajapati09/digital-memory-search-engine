@@ -1,7 +1,15 @@
-import HomePage from "./pages/HomePage";
+import { BrowserRouter } from 'react-router-dom'
+import { AuthProvider } from './hooks/useAuth'
+import AppRoutes from './routes/AppRoutes'
 
 function App() {
-  return <HomePage />;
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  )
 }
 
-export default App;
+export default App
