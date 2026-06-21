@@ -10,7 +10,7 @@ function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
   const [errors, setErrors] = useState({})
   const [formError, setFormError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,7 +24,7 @@ function Login() {
     e.preventDefault()
 
     const emailError = validateEmail(email)
-    const passwordError = validatePassword(password)
+    const passwordError = password ? '' : 'Password is required'
 
     if (emailError || passwordError) {
       setErrors({ email: emailError, password: passwordError })
@@ -38,8 +38,12 @@ function Login() {
     try {
       await login({ email, password, rememberMe })
       navigate(from, { replace: true })
-    } catch {
-      setFormError('Invalid email or password. Please try again.')
+    } catch (err) {
+      if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+        setFormError('Network error. Please check your connection and try again.')
+      } else {
+        setFormError(err.message || 'Invalid email or password. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -115,7 +119,7 @@ function Login() {
           </div>
 
           <Button type="submit" className="w-full" loading={loading}>
-            Log in
+            {loading ? 'Logging in...' : 'Log in'}
           </Button>
         </form>
 

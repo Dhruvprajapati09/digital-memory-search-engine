@@ -77,7 +77,11 @@ function Register() {
       await register({ name, email, password })
       navigate('/dashboard', { replace: true })
     } catch (err) {
-      setFormError(err.message || 'Registration failed. Please try again.')
+      if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+        setFormError('Network error. Please check your connection and try again.')
+      } else {
+        setFormError(err.message || 'Registration failed. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -155,7 +159,7 @@ function Register() {
           />
 
           <Button type="submit" className="w-full mt-2" loading={loading}>
-            Sign up
+            {loading ? 'Creating account...' : 'Sign up'}
           </Button>
         </form>
 
