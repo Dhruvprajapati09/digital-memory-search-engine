@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ExtractedTextViewer from '../components/ExtractedTextViewer'
+import IndexStatusBadge from '../components/IndexStatusBadge'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
 import Spinner from '../components/ui/Spinner'
@@ -9,10 +10,14 @@ import {
   fetchDocument,
   reprocessDocument,
 } from '../services/documentService'
-import type { Document, ExtractionStatus } from '../types/document'
+import type { Document, ExtractionStatus, IndexStatus } from '../types/document'
 
-function getStatus(document: Document): ExtractionStatus {
+function getExtractionStatus(document: Document): ExtractionStatus {
   return document.status ?? document.extractionStatus ?? 'pending'
+}
+
+function getIndexStatus(document: Document): IndexStatus {
+  return document.indexStatus ?? 'pending'
 }
 
 function formatDate(dateString: string): string {
@@ -53,12 +58,18 @@ function DocumentDetailPage() {
     loadDocument()
   }, [loadDocument])
 
-  // Poll while extraction is in progress
   useEffect(() => {
     if (!document) return
 
-    const status = getStatus(document)
-    if (status !== 'pending' && status !== 'processing') return
+    const extractionStatus = getExtractionStatus(document)
+    const indexStatus = getIndexStatus(document)
+    const isProcessing =
+      extractionStatus === 'pending' ||
+      extractionStatus === 'processing' ||
+      indexStatus === 'pending' ||
+      indexStatus === 'processing'
+
+    if (!isProcessing) return
 
     const interval = window.setInterval(loadDocument, 2500)
     return () => window.clearInterval(interval)
@@ -78,6 +89,7 @@ function DocumentDetailPage() {
               extractionStatus: 'processing',
               status: 'processing',
               extractionError: null,
+              indexStatus: 'pending',
             }
           : prev,
       )
@@ -114,7 +126,8 @@ function DocumentDetailPage() {
     return null
   }
 
-  const status = getStatus(document)
+  const extractionStatus = getExtractionStatus(document)
+  const indexStatus = getIndexStatus(document)
 
   return (
     <div>
@@ -139,26 +152,69 @@ function DocumentDetailPage() {
               <span>Uploaded {formatDate(document.createdAt)}</span>
             </div>
           </div>
-          <Badge
-            variant={
-              status === 'completed'
-                ? 'success'
-                : status === 'failed'
-                  ? 'danger'
-                  : status === 'processing'
-                    ? 'primary'
-                    : 'warning'
-            }
-          >
-            {status}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={
+                extractionStatus === 'completed'
+                  ? 'success'
+                  : extractionStatus === 'failed'
+                    ? 'danger'
+                    : extractionStatus === 'processing'
+                      ? 'primary'
+                      : 'warning'
+              }
+            >
+              Extraction: {extractionStatus}
+            </Badge>
+            <IndexStatusBadge status={indexStatus} />
+          </div>
         </div>
+
+        <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <div>
+            <dt className="text-text-muted">Chunk Count</dt>
+            <dd className="font-semibold text-gray-900">
+              {document.chunkCount ?? 0}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-text-muted">Indexed At</dt>
+            <dd className="text-gray-800">
+              {document.indexedAt
+                ? formatDate(document.indexedAt)
+                : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-text-muted">Embedding Model</dt>
+            <dd className="text-gray-800 font-mono text-xs">
+              {document.embeddingModel ?? '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-text-muted">Search Index</dt>
+            <dd>
+              <Link
+                to={`/dashboard/documents/${id}/index`}
+                className="text-primary-600 hover:text-primary-700 font-medium"
+              >
+                View chunks →
+              </Link>
+            </dd>
+          </div>
+        </dl>
+
+        {document.indexError && indexStatus === 'failed' && (
+          <p className="mt-3 text-sm text-red-600" role="alert">
+            Index error: {document.indexError}
+          </p>
+        )}
       </Card>
 
       <Card>
         <ExtractedTextViewer
           text={document.extractedText}
-          status={status}
+          status={extractionStatus}
           error={document.extractionError}
           onReprocess={handleReprocess}
           reprocessing={reprocessing}

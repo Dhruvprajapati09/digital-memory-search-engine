@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { getFileUrl } from '../services/documentService'
-import type { Document, DocumentType } from '../types/document'
+import type { Document, DocumentType, IndexStatus } from '../types/document'
 import Button from './ui/Button'
 import Card from './ui/Card'
 import Badge from './ui/Badge'
+import IndexStatusBadge from './IndexStatusBadge'
 
 interface DocumentCardProps {
   document: Document
@@ -58,7 +59,7 @@ function TypeIcon({ type }: { type: DocumentType }) {
 function DocumentCard({ document, onDelete }: DocumentCardProps) {
   const imageUrl = document.type === 'image' ? getFileUrl(document) : null
   const previewText = getPreviewText(document)
-  const status = document.extractionStatus ?? 'pending'
+  const indexStatus = (document.indexStatus ?? 'pending') as IndexStatus
 
   return (
     <Card className="flex flex-col sm:flex-row gap-4">
@@ -83,23 +84,24 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
             >
               {document.title}
             </Link>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <p className="text-sm text-text-muted capitalize">{document.type}</p>
               {document.type !== 'note' && (
                 <Badge
                   variant={
-                    status === 'completed'
+                    (document.extractionStatus ?? 'pending') === 'completed'
                       ? 'success'
-                      : status === 'failed'
+                      : (document.extractionStatus ?? 'pending') === 'failed'
                         ? 'danger'
-                        : status === 'processing'
+                        : (document.extractionStatus ?? 'pending') === 'processing'
                           ? 'primary'
                           : 'warning'
                   }
                 >
-                  {status}
+                  {document.extractionStatus ?? 'pending'}
                 </Badge>
               )}
+              <IndexStatusBadge status={indexStatus} />
             </div>
           </div>
           <Button

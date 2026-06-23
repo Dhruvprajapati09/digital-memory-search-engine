@@ -5,6 +5,10 @@ import type {
   DocumentResponse,
   DeleteDocumentResponse,
   ReprocessResponse,
+  ChunksResponse,
+  IndexStatusResponse,
+  DocumentStatsResponse,
+  Chunk,
 } from '../types/document'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -105,6 +109,44 @@ export async function fetchDocument(id: string): Promise<Document> {
 
 export async function reprocessDocument(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/documents/${id}/reprocess`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+
+  await handleResponse<ReprocessResponse>(response)
+}
+
+export async function fetchDocumentStats() {
+  const response = await fetch(`${API_BASE}/documents/stats`, {
+    method: 'GET',
+    headers: authHeaders(),
+  })
+
+  const data = await handleResponse<DocumentStatsResponse>(response)
+  return data.stats
+}
+
+export async function fetchDocumentIndexStatus(id: string) {
+  const response = await fetch(`${API_BASE}/documents/${id}/index-status`, {
+    method: 'GET',
+    headers: authHeaders(),
+  })
+
+  return handleResponse<IndexStatusResponse>(response)
+}
+
+export async function fetchDocumentChunks(id: string): Promise<Chunk[]> {
+  const response = await fetch(`${API_BASE}/documents/${id}/chunks`, {
+    method: 'GET',
+    headers: authHeaders(),
+  })
+
+  const data = await handleResponse<ChunksResponse>(response)
+  return data.chunks
+}
+
+export async function reindexDocument(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/documents/${id}/reindex`, {
     method: 'POST',
     headers: authHeaders(),
   })
