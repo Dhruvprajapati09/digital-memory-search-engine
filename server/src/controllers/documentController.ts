@@ -5,9 +5,15 @@ import DocumentModel, { IDocument } from "../models/Document";
 import { asyncHandler, AppError } from "../middleware/error.middleware";
 import {
   queueExtraction,
-  runExtractionForDocument,
   resolveSafeUploadPath,
 } from "../services/extractionService";
+import {
+  queueIndexing,
+  queueReindex,
+  getDocumentChunks,
+  getUserChunkCount,
+  deleteDocumentIndex,
+} from "../services/indexingService";
 import { cleanText } from "../services/textCleaner";
 
 /** Shape documents consistently for API list responses */
@@ -25,6 +31,11 @@ function formatDocument(doc: IDocument) {
     extractedText: doc.extractedText,
     extractionStatus: doc.extractionStatus,
     extractionError: doc.extractionError,
+    indexStatus: doc.indexStatus,
+    indexedAt: doc.indexedAt,
+    chunkCount: doc.chunkCount,
+    embeddingModel: doc.embeddingModel,
+    indexError: doc.indexError,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -35,6 +46,32 @@ function formatDocumentDetail(doc: IDocument) {
   return {
     ...formatDocument(doc),
     status: doc.extractionStatus,
+  };
+}
+
+function formatChunk(chunk: {
+  _id: mongoose.Types.ObjectId;
+  documentId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId;
+  chunkIndex: number;
+  text: string;
+  tokenCount: number;
+  vectorId: string;
+  embeddingModel: string;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}) {
+  return {
+    id: chunk._id.toString(),
+    documentId: chunk.documentId.toString(),
+    userId: chunk.userId.toString(),
+    chunkIndex: chunk.chunkIndex,
+    text: chunk.text,
+    tokenCount: chunk.tokenCount,
+    vectorId: chunk.vectorId,
+    embeddingModel: chunk.embeddingModel,
+    metadata: chunk.metadata ?? {},
+    createdAt: chunk.createdAt,
   };
 }
 
@@ -120,9 +157,9 @@ export const uploadDocument = asyncHandler(
       fileSize: req.file.size,
       mimeType: req.file.mimetype,
       extractionStatus: "pending",
+      indexStatus: "pending",
     });
 
-    // Run extraction in background — response returns immediately with pending status
     queueExtraction(document._id.toString());
 
     res.status(201).json({
@@ -149,7 +186,10 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
     extractedText: cleanedContent,
     extractionStatus: "completed",
     extractionError: null,
+    indexStatus: "pending",
   });
+
+  queueIndexing(document._id.toString());
 
   res.status(201).json({
     success: true,
@@ -172,6 +212,37 @@ export const getDocuments = asyncHandler(async (req: Request, res: Response) => 
   });
 });
 
+export const getDocumentStats = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.user) {
+      throw new AppError("Unauthorized", 401);
+    }
+
+    const userId = req.user._id;
+
+    const [totalDocuments, totalExtracted, totalIndexed, totalChunks] =
+      await Promise.all([
+        DocumentModel.countDocuments({ userId }),
+        DocumentModel.countDocuments({
+          userId,
+          extractionStatus: "completed",
+        }),
+        DocumentModel.countDocuments({ userId, indexStatus: "indexed" }),
+        getUserChunkCount(userId.toString()),
+      ]);
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalDocuments,
+        totalExtracted,
+        totalIndexed,
+        totalChunks,
+      },
+    });
+  }
+);
+
 export const getDocument = asyncHandler(async (req: Request, res: Response) => {
   const documentId = parseDocumentId(req.params.id);
   const document = await getOwnedDocument(req, documentId);
@@ -181,6 +252,41 @@ export const getDocument = asyncHandler(async (req: Request, res: Response) => {
     document: formatDocumentDetail(document),
   });
 });
+
+export const getDocumentIndexStatus = asyncHandler(
+  async (req: Request, res: Response) => {
+    const documentId = parseDocumentId(req.params.id);
+    const document = await getOwnedDocument(req, documentId);
+
+    res.status(200).json({
+      success: true,
+      status: document.indexStatus,
+      chunkCount: document.chunkCount,
+      indexedAt: document.indexedAt ?? null,
+      embeddingModel: document.embeddingModel ?? null,
+      indexError: document.indexError ?? null,
+      extractionStatus: document.extractionStatus,
+      extractionError: document.extractionError ?? null,
+    });
+  }
+);
+
+export const getDocumentChunksHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const documentId = parseDocumentId(req.params.id);
+    await getOwnedDocument(req, documentId);
+
+    const chunks = await getDocumentChunks(
+      documentId,
+      req.user!._id.toString()
+    );
+
+    res.status(200).json({
+      success: true,
+      chunks: chunks.map(formatChunk),
+    });
+  }
+);
 
 export const reprocessDocument = asyncHandler(
   async (req: Request, res: Response) => {
@@ -193,12 +299,32 @@ export const reprocessDocument = asyncHandler(
       document.extractionStatus = cleaned ? "completed" : "failed";
       document.extractionError = cleaned ? null : "Note content is empty";
       await document.save();
+
+      if (cleaned) {
+        queueIndexing(documentId);
+      }
     } else {
       document.extractionStatus = "processing";
       document.extractionError = null;
+      document.indexStatus = "pending";
       await document.save();
       queueExtraction(documentId);
     }
+
+    res.status(200).json({ success: true });
+  }
+);
+
+export const reindexDocumentHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    const documentId = parseDocumentId(req.params.id);
+    const document = await getOwnedDocument(req, documentId);
+
+    document.indexStatus = "processing";
+    document.indexError = null;
+    await document.save();
+
+    queueReindex(documentId);
 
     res.status(200).json({ success: true });
   }
@@ -208,6 +334,8 @@ export const deleteDocument = asyncHandler(
   async (req: Request, res: Response) => {
     const documentId = parseDocumentId(req.params.id);
     const document = await getOwnedDocument(req, documentId);
+
+    await deleteDocumentIndex(documentId, document.userId.toString());
 
     if (document.storedFileName) {
       const absolutePath = resolveSafeUploadPath(document.storedFileName);

@@ -18,4 +18,7 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
   BCRYPT_SALT_ROUNDS: parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10),
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+  EMBEDDING_MODEL: process.env.EMBEDDING_MODEL || "gemini-embedding-001",
+  VECTOR_STORE_PROVIDER: process.env.VECTOR_STORE_PROVIDER || "mongodb",
 };

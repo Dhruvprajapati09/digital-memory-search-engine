@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
 import type { ExtractionStatus } from "../types/extraction.types";
+import type { IndexStatus } from "../types/embedding";
 
 export type DocumentType = "pdf" | "image" | "note";
 
@@ -16,6 +17,11 @@ export interface IDocument extends MongooseDocument {
   extractedText?: string;
   extractionStatus: ExtractionStatus;
   extractionError?: string | null;
+  indexStatus: IndexStatus;
+  indexedAt?: Date;
+  chunkCount: number;
+  embeddingModel?: string;
+  indexError?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -83,6 +89,30 @@ const documentSchema = new Schema<IDocument>(
       type: String,
       default: null,
     },
+    indexStatus: {
+      type: String,
+      enum: {
+        values: ["pending", "processing", "indexed", "failed"],
+        message: "Invalid index status",
+      },
+      default: "pending",
+    },
+    indexedAt: {
+      type: Date,
+    },
+    chunkCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    embeddingModel: {
+      type: String,
+      trim: true,
+    },
+    indexError: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -97,8 +127,8 @@ const documentSchema = new Schema<IDocument>(
   }
 );
 
-// Index extracted text for future full-text search milestones
 documentSchema.index({ extractedText: "text" });
+documentSchema.index({ userId: 1, indexStatus: 1 });
 
 const DocumentModel = mongoose.model<IDocument>("Document", documentSchema);
 

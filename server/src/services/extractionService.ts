@@ -4,6 +4,7 @@ import { UPLOAD_DIR } from "../middleware/upload";
 import { extractPdfText } from "./pdfExtractor";
 import { extractImageText } from "./ocrExtractor";
 import { cleanText } from "./textCleaner";
+import { queueIndexing } from "./indexingService";
 import type { ExtractionResult } from "../types/extraction.types";
 
 /** Resolve a stored filename to a safe absolute path inside uploads/ */
@@ -61,15 +62,17 @@ export async function extractTextFromDocument(
 /**
  * Run the full extraction pipeline for a document and persist results.
  * Safe to call from background jobs — never throws to callers.
+ * @returns true when extraction succeeded
  */
 export async function runExtractionForDocument(
-  documentId: string
-): Promise<void> {
+  documentId: string,
+  options?: { skipAutoIndex?: boolean }
+): Promise<boolean> {
   try {
     const document = await DocumentModel.findById(documentId);
 
     if (!document) {
-      return;
+      return false;
     }
 
     document.extractionStatus = "processing";
@@ -82,12 +85,19 @@ export async function runExtractionForDocument(
       document.extractedText = result.text;
       document.extractionStatus = "completed";
       document.extractionError = null;
-    } else {
-      document.extractionStatus = "failed";
-      document.extractionError = result.error ?? "Extraction failed";
+      await document.save();
+
+      if (!options?.skipAutoIndex) {
+        queueIndexing(documentId);
+      }
+
+      return true;
     }
 
+    document.extractionStatus = "failed";
+    document.extractionError = result.error ?? "Extraction failed";
     await document.save();
+    return false;
   } catch (err) {
     console.error(`Extraction failed for document ${documentId}:`, err);
 
@@ -100,6 +110,8 @@ export async function runExtractionForDocument(
     } catch (updateErr) {
       console.error("Failed to update extraction error status:", updateErr);
     }
+
+    return false;
   }
 }
 

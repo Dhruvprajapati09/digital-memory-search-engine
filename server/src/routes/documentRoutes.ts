@@ -3,8 +3,12 @@ import {
   uploadDocument,
   createNote,
   getDocuments,
+  getDocumentStats,
   getDocument,
+  getDocumentIndexStatus,
+  getDocumentChunksHandler,
   reprocessDocument,
+  reindexDocumentHandler,
   deleteDocument,
 } from "../controllers/documentController";
 import { protect } from "../middleware/auth.middleware";
@@ -12,7 +16,6 @@ import { uploadSingle, handleUploadError } from "../middleware/upload";
 
 const router = express.Router();
 
-// All document routes require authentication
 router.use(protect);
 
 router.post(
@@ -30,10 +33,13 @@ router.post(
 );
 
 router.post("/note", createNote);
+router.get("/stats", getDocumentStats);
 router.get("/", getDocuments);
 
-// Register reprocess before generic :id routes
 router.post("/:id/reprocess", reprocessDocument);
+router.post("/:id/reindex", reindexDocumentHandler);
+router.get("/:id/chunks", getDocumentChunksHandler);
+router.get("/:id/index-status", getDocumentIndexStatus);
 router.get("/:id", getDocument);
 router.delete("/:id", deleteDocument);
 
