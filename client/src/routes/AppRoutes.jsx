@@ -9,7 +9,7 @@ const Register = lazy(() => import('../pages/Register'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Memories = lazy(() => import('../pages/Memories'))
 const Search = lazy(() => import('../pages/Search'))
-const Upload = lazy(() => import('../pages/Upload'))
+const Upload = lazy(() => import('../pages/DocumentsPage'))
 const Settings = lazy(() => import('../pages/Settings'))
 const NotFound = lazy(() => import('../pages/NotFound'))
 
