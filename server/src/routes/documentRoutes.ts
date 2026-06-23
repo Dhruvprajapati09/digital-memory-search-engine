@@ -3,6 +3,8 @@ import {
   uploadDocument,
   createNote,
   getDocuments,
+  getDocument,
+  reprocessDocument,
   deleteDocument,
 } from "../controllers/documentController";
 import { protect } from "../middleware/auth.middleware";
@@ -29,6 +31,10 @@ router.post(
 
 router.post("/note", createNote);
 router.get("/", getDocuments);
+
+// Register reprocess before generic :id routes
+router.post("/:id/reprocess", reprocessDocument);
+router.get("/:id", getDocument);
 router.delete("/:id", deleteDocument);
 
 export default router;

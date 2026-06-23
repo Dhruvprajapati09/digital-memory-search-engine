@@ -1,12 +1,16 @@
 import { Request, Response } from "express";
 import fs from "fs/promises";
-import path from "path";
 import mongoose from "mongoose";
 import DocumentModel, { IDocument } from "../models/Document";
 import { asyncHandler, AppError } from "../middleware/error.middleware";
-import { UPLOAD_DIR } from "../middleware/upload";
+import {
+  queueExtraction,
+  runExtractionForDocument,
+  resolveSafeUploadPath,
+} from "../services/extractionService";
+import { cleanText } from "../services/textCleaner";
 
-/** Shape documents consistently for API responses */
+/** Shape documents consistently for API list responses */
 function formatDocument(doc: IDocument) {
   return {
     id: doc._id.toString(),
@@ -18,8 +22,19 @@ function formatDocument(doc: IDocument) {
     fileSize: doc.fileSize,
     mimeType: doc.mimeType,
     noteContent: doc.noteContent,
+    extractedText: doc.extractedText,
+    extractionStatus: doc.extractionStatus,
+    extractionError: doc.extractionError,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+  };
+}
+
+/** Detail response includes `status` alias for extraction state */
+function formatDocumentDetail(doc: IDocument) {
+  return {
+    ...formatDocument(doc),
+    status: doc.extractionStatus,
   };
 }
 
@@ -50,15 +65,32 @@ function getDocumentTypeFromMime(mimeType: string): "pdf" | "image" {
   throw new AppError("Unsupported file type", 400);
 }
 
-function resolveSafeFilePath(filePath: string): string {
-  const normalized = path.normalize(filePath).replace(/^(\.\.(\/|\\|$))+/, "");
-  const absolutePath = path.resolve(UPLOAD_DIR, normalized);
+function parseDocumentId(id: string | string[] | undefined): string {
+  if (!id || typeof id !== "string" || !mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError("Invalid document ID", 400);
+  }
+  return id;
+}
 
-  if (!absolutePath.startsWith(UPLOAD_DIR)) {
-    throw new AppError("Invalid file path", 400);
+async function getOwnedDocument(
+  req: Request,
+  documentId: string
+): Promise<IDocument> {
+  if (!req.user) {
+    throw new AppError("Unauthorized", 401);
   }
 
-  return absolutePath;
+  const document = await DocumentModel.findById(documentId);
+
+  if (!document) {
+    throw new AppError("Document not found", 404);
+  }
+
+  if (document.userId.toString() !== req.user._id.toString()) {
+    throw new AppError("Unauthorized access to this document", 403);
+  }
+
+  return document;
 }
 
 export const uploadDocument = asyncHandler(
@@ -76,7 +108,7 @@ export const uploadDocument = asyncHandler(
       : req.file.originalname;
 
     const docType = getDocumentTypeFromMime(req.file.mimetype);
-    const relativePath = path.join("uploads", req.file.filename);
+    const relativePath = `uploads/${req.file.filename}`;
 
     const document = await DocumentModel.create({
       userId: req.user._id,
@@ -84,10 +116,14 @@ export const uploadDocument = asyncHandler(
       type: docType,
       originalFileName: req.file.originalname,
       storedFileName: req.file.filename,
-      filePath: relativePath.replace(/\\/g, "/"),
+      filePath: relativePath,
       fileSize: req.file.size,
       mimeType: req.file.mimetype,
+      extractionStatus: "pending",
     });
+
+    // Run extraction in background — response returns immediately with pending status
+    queueExtraction(document._id.toString());
 
     res.status(201).json({
       success: true,
@@ -103,12 +139,16 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
 
   const title = sanitizeText(req.body.title, "Title");
   const content = sanitizeText(req.body.content, "Content", 10000);
+  const cleanedContent = cleanText(content);
 
   const document = await DocumentModel.create({
     userId: req.user._id,
     title,
     type: "note",
     noteContent: content,
+    extractedText: cleanedContent,
+    extractionStatus: "completed",
+    extractionError: null,
   });
 
   res.status(201).json({
@@ -132,30 +172,45 @@ export const getDocuments = asyncHandler(async (req: Request, res: Response) => 
   });
 });
 
+export const getDocument = asyncHandler(async (req: Request, res: Response) => {
+  const documentId = parseDocumentId(req.params.id);
+  const document = await getOwnedDocument(req, documentId);
+
+  res.status(200).json({
+    success: true,
+    document: formatDocumentDetail(document),
+  });
+});
+
+export const reprocessDocument = asyncHandler(
+  async (req: Request, res: Response) => {
+    const documentId = parseDocumentId(req.params.id);
+    const document = await getOwnedDocument(req, documentId);
+
+    if (document.type === "note") {
+      const cleaned = cleanText(document.noteContent ?? "");
+      document.extractedText = cleaned;
+      document.extractionStatus = cleaned ? "completed" : "failed";
+      document.extractionError = cleaned ? null : "Note content is empty";
+      await document.save();
+    } else {
+      document.extractionStatus = "processing";
+      document.extractionError = null;
+      await document.save();
+      queueExtraction(documentId);
+    }
+
+    res.status(200).json({ success: true });
+  }
+);
+
 export const deleteDocument = asyncHandler(
   async (req: Request, res: Response) => {
-    if (!req.user) {
-      throw new AppError("Unauthorized", 401);
-    }
-
-    const id = req.params.id;
-
-    if (!id || typeof id !== "string" || !mongoose.Types.ObjectId.isValid(id)) {
-      throw new AppError("Invalid document ID", 400);
-    }
-
-    const document = await DocumentModel.findById(id);
-
-    if (!document) {
-      throw new AppError("Document not found", 404);
-    }
-
-    if (document.userId.toString() !== req.user._id.toString()) {
-      throw new AppError("Unauthorized access to this document", 403);
-    }
+    const documentId = parseDocumentId(req.params.id);
+    const document = await getOwnedDocument(req, documentId);
 
     if (document.storedFileName) {
-      const absolutePath = resolveSafeFilePath(document.storedFileName);
+      const absolutePath = resolveSafeUploadPath(document.storedFileName);
 
       try {
         await fs.unlink(absolutePath);

@@ -4,6 +4,7 @@ import type {
   DocumentsResponse,
   DocumentResponse,
   DeleteDocumentResponse,
+  ReprocessResponse,
 } from '../types/document'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -90,6 +91,25 @@ export async function createNote(
 
   const data = await handleResponse<DocumentResponse>(response)
   return data.document
+}
+
+export async function fetchDocument(id: string): Promise<Document> {
+  const response = await fetch(`${API_BASE}/documents/${id}`, {
+    method: 'GET',
+    headers: authHeaders(),
+  })
+
+  const data = await handleResponse<DocumentResponse>(response)
+  return data.document
+}
+
+export async function reprocessDocument(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/documents/${id}/reprocess`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+
+  await handleResponse<ReprocessResponse>(response)
 }
 
 export async function deleteDocument(id: string): Promise<void> {

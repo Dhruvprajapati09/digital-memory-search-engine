@@ -1,5 +1,11 @@
 export type DocumentType = 'pdf' | 'image' | 'note'
 
+export type ExtractionStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+
 export interface Document {
   id: string
   title: string
@@ -10,6 +16,10 @@ export interface Document {
   fileSize?: number
   mimeType?: string
   noteContent?: string
+  extractedText?: string
+  extractionStatus?: ExtractionStatus
+  extractionError?: string | null
+  status?: ExtractionStatus
   createdAt: string
   updatedAt?: string
 }
@@ -29,6 +39,10 @@ export interface DeleteDocumentResponse {
   message: string
 }
 
+export interface ReprocessResponse {
+  success: boolean
+}
+
 export interface ApiErrorResponse {
   success: false
   message: string
@@ -39,4 +53,10 @@ export interface DocumentStats {
   notes: number
   pdfs: number
   images: number
+}
+
+export interface ExtractionResult {
+  success: boolean
+  text?: string
+  error?: string
 }

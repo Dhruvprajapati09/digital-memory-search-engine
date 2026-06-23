@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
+import type { ExtractionStatus } from "../types/extraction.types";
 
 export type DocumentType = "pdf" | "image" | "note";
 
@@ -12,6 +13,9 @@ export interface IDocument extends MongooseDocument {
   fileSize?: number;
   mimeType?: string;
   noteContent?: string;
+  extractedText?: string;
+  extractionStatus: ExtractionStatus;
+  extractionError?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,6 +67,22 @@ const documentSchema = new Schema<IDocument>(
       trim: true,
       maxlength: [10000, "Note content cannot exceed 10000 characters"],
     },
+    extractedText: {
+      type: String,
+      trim: true,
+    },
+    extractionStatus: {
+      type: String,
+      enum: {
+        values: ["pending", "processing", "completed", "failed"],
+        message: "Invalid extraction status",
+      },
+      default: "pending",
+    },
+    extractionError: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -76,6 +96,9 @@ const documentSchema = new Schema<IDocument>(
     },
   }
 );
+
+// Index extracted text for future full-text search milestones
+documentSchema.index({ extractedText: "text" });
 
 const DocumentModel = mongoose.model<IDocument>("Document", documentSchema);
 

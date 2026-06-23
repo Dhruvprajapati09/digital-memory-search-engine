@@ -1,7 +1,9 @@
+import { Link } from 'react-router-dom'
 import { getFileUrl } from '../services/documentService'
 import type { Document, DocumentType } from '../types/document'
 import Button from './ui/Button'
 import Card from './ui/Card'
+import Badge from './ui/Badge'
 
 interface DocumentCardProps {
   document: Document
@@ -21,6 +23,12 @@ function formatDate(dateString: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+function getPreviewText(document: Document): string | null {
+  const text = document.extractedText ?? document.noteContent
+  if (!text?.trim()) return null
+  return text.trim()
 }
 
 function TypeIcon({ type }: { type: DocumentType }) {
@@ -49,6 +57,8 @@ function TypeIcon({ type }: { type: DocumentType }) {
 
 function DocumentCard({ document, onDelete }: DocumentCardProps) {
   const imageUrl = document.type === 'image' ? getFileUrl(document) : null
+  const previewText = getPreviewText(document)
+  const status = document.extractionStatus ?? 'pending'
 
   return (
     <Card className="flex flex-col sm:flex-row gap-4">
@@ -67,8 +77,30 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-semibold text-gray-900 truncate">{document.title}</h3>
-            <p className="text-sm text-text-muted capitalize">{document.type}</p>
+            <Link
+              to={`/dashboard/documents/${document.id}`}
+              className="font-semibold text-gray-900 hover:text-primary-700 truncate block"
+            >
+              {document.title}
+            </Link>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm text-text-muted capitalize">{document.type}</p>
+              {document.type !== 'note' && (
+                <Badge
+                  variant={
+                    status === 'completed'
+                      ? 'success'
+                      : status === 'failed'
+                        ? 'danger'
+                        : status === 'processing'
+                          ? 'primary'
+                          : 'warning'
+                  }
+                >
+                  {status}
+                </Badge>
+              )}
+            </div>
           </div>
           <Button
             variant="danger"
@@ -91,10 +123,24 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
           </div>
         </dl>
 
-        {document.type === 'note' && document.noteContent && (
-          <p className="mt-3 text-sm text-gray-700 line-clamp-2">
-            {document.noteContent}
-          </p>
+        {previewText && (
+          <div className="mt-3">
+            <p className="text-sm text-gray-700 line-clamp-3">
+              {previewText.length > 200
+                ? `${previewText.slice(0, 200)}...`
+                : previewText}
+            </p>
+            <Link
+              to={`/dashboard/documents/${document.id}`}
+              className="text-sm text-primary-600 hover:text-primary-700 font-medium mt-1 inline-block"
+            >
+              Read More
+            </Link>
+          </div>
+        )}
+
+        {!previewText && status === 'processing' && (
+          <p className="mt-3 text-sm text-text-muted">Extracting text...</p>
         )}
       </div>
     </Card>

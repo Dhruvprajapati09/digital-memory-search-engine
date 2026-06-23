@@ -10,6 +10,7 @@ const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Memories = lazy(() => import('../pages/Memories'))
 const Search = lazy(() => import('../pages/Search'))
 const Upload = lazy(() => import('../pages/DocumentsPage'))
+const DocumentDetail = lazy(() => import('../pages/DocumentDetailPage'))
 const Settings = lazy(() => import('../pages/Settings'))
 const NotFound = lazy(() => import('../pages/NotFound'))
 
@@ -41,6 +42,7 @@ export default function AppRoutes() {
           <Route path="memories" element={<Memories />} />
           <Route path="search" element={<Search />} />
           <Route path="upload" element={<Upload />} />
+          <Route path="documents/:id" element={<DocumentDetail />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 
