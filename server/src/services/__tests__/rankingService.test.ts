@@ -92,7 +92,15 @@ describe("rankDocumentGroups", () => {
       makeHit("doc1", 0, 0.9, "react hooks state"),
       makeHit("doc1", 1, 0.85, "react hooks lifecycle"),
       makeHit("doc2", 0, 0.7, "node express server"),
-    ];
+    ].map((h) => ({
+      vectorId: h.vectorId,
+      text: h.text,
+      metadata: h.metadata,
+      vectorScore: h.score,
+      keywordScore: 0,
+      rrfScore: h.score,
+      topic: h.metadata.topic as string | undefined,
+    }));
 
     const ranked = rankDocumentGroups(hits, docMeta, "react hooks");
 

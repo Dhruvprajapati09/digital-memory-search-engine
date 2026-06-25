@@ -18,6 +18,10 @@ export interface SearchParams extends SearchFilter {
 export interface MatchedChunk {
   chunkIndex: number
   score: number
+  topic?: string
+  subtopic?: string
+  title?: string
+  sectionPath?: string[]
 }
 
 export interface SearchResult {
@@ -29,6 +33,8 @@ export interface SearchResult {
   highlightTerms: string[]
   matchedChunks: MatchedChunk[]
   createdAt: string
+  topTopic?: string
+  topSubtopic?: string
 }
 
 export interface SearchResponse {

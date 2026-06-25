@@ -1,15 +1,21 @@
 import DocumentModel from "../models/Document";
 import ChunkModel from "../models/Chunk";
-import { chunkText } from "./chunkingService";
-import { generateEmbedding } from "./embeddingService";
+import { chunkTextByTopics } from "./chunking/topicChunkingService";
+import {
+  enrichChunkMetadata,
+  buildEmbeddingText,
+  buildSearchableText,
+} from "./enrichment/chunkEnrichmentService";
+import { generateEmbeddingsBatch } from "./embeddingService";
 import { vectorStore } from "./vectorStoreService";
-import { calculateTokens } from "../utils/tokenCounter";
 import { env } from "../config/env";
-import type { VectorMetadata } from "../types/embedding";
+import type { StoreVectorPayload, VectorMetadata } from "../types/embedding";
+
+const EMBEDDING_BATCH_SIZE = 8;
 
 /**
- * Orchestrates the full indexing pipeline:
- * chunk → embed → store vector → save metadata → update document status.
+ * Orchestrates topic-based indexing:
+ * structure parse → topic chunk → enrich → embed → store → link hierarchy.
  */
 export async function runIndexingForDocument(
   documentId: string
@@ -23,7 +29,7 @@ export async function runIndexingForDocument(
     }
 
     console.log(
-      `[indexingService] Document processing started: ${documentId} (${document.title})`
+      `[indexingService] Topic indexing started: ${documentId} (${document.title})`
     );
 
     const extractedText = document.extractedText?.trim();
@@ -39,7 +45,6 @@ export async function runIndexingForDocument(
     }
 
     if (document.extractionStatus !== "completed") {
-      // Allow indexing when text exists (e.g. legacy records) but normalize status
       document.extractionStatus = "completed";
       document.extractionError = null;
     }
@@ -48,67 +53,147 @@ export async function runIndexingForDocument(
     document.indexError = null;
     await document.save();
 
-    // Remove previous index data before rebuilding
     await vectorStore.deleteVectorsByDocument(
       documentId,
       document.userId.toString()
     );
 
-    const textChunks = chunkText(extractedText);
+    const topicChunks = chunkTextByTopics(extractedText, {
+      documentTitle: document.title,
+      maxTokens: env.CHUNK_MAX_TOKENS,
+    });
+
     console.log(
-      `[indexingService] Chunk count for ${documentId}: ${textChunks.length}`
+      `[indexingService] Topic chunks for ${documentId}: ${topicChunks.length}`
     );
 
-    if (textChunks.length === 0) {
+    if (topicChunks.length === 0) {
       document.indexStatus = "failed";
-      document.indexError = "Text chunking produced no chunks";
+      document.indexError = "Topic chunking produced no chunks";
       await document.save();
       return;
     }
 
-    console.log(
-      `[indexingService] Embedding generation started for ${documentId}`
+    const enriched = topicChunks.map((chunk) => ({
+      chunk,
+      meta: enrichChunkMetadata(chunk),
+    }));
+
+    const embeddingTexts = enriched.map(({ chunk, meta }) =>
+      buildEmbeddingText(chunk, meta)
     );
 
+    console.log(
+      `[indexingService] Generating embeddings (batch=${EMBEDDING_BATCH_SIZE}) for ${documentId}`
+    );
+
+    const embeddings = await generateEmbeddingsBatch(embeddingTexts, {
+      taskType: { kind: "document" },
+      batchSize: EMBEDDING_BATCH_SIZE,
+      onProgress: (done, total) => {
+        console.log(
+          `[indexingService] Embeddings ${done}/${total} for ${documentId}`
+        );
+      },
+    });
+
+    const chunkIdByIndex = new Map<number, string>();
     let processedChunks = 0;
+    const errors: string[] = [];
 
-    for (const chunk of textChunks) {
-      const tokenCount = calculateTokens(chunk.text);
+    for (let i = 0; i < enriched.length; i += 1) {
+      try {
+        const { chunk, meta } = enriched[i];
+        const embedding = embeddings[i];
+        const searchableText = buildSearchableText(chunk, meta);
 
-      const embedding = await generateEmbedding(chunk.text);
+        const metadata: VectorMetadata = {
+          documentId,
+          userId: document.userId.toString(),
+          chunkIndex: chunk.chunkIndex,
+          type: document.type,
+          documentTitle: document.title,
+          topic: meta.topic,
+          subtopic: meta.subtopic,
+          title: meta.title,
+          summary: meta.summary,
+          keywords: meta.keywords,
+          concepts: meta.concepts,
+          tags: meta.tags,
+          sectionPath: meta.sectionPath,
+          contentPreview: meta.contentPreview,
+          level: meta.level,
+          parentChunkIndex: meta.parentChunkIndex,
+        };
 
-      const metadata: VectorMetadata = {
-        documentId: documentId,
-        userId: document.userId.toString(),
-        chunkIndex: chunk.chunkIndex,
-        type: document.type,
-        documentTitle: document.title,
-      };
+        const payload: StoreVectorPayload = {
+          vector: embedding.vector,
+          text: chunk.text,
+          searchableText,
+          metadata,
+          embeddingModel: embedding.model,
+          tokenCount: chunk.tokenCount,
+          topic: meta.topic,
+          subtopic: meta.subtopic,
+          title: meta.title,
+          summary: meta.summary,
+          keywords: meta.keywords,
+          concepts: meta.concepts,
+          tags: meta.tags,
+          sourceType: document.type,
+          sectionPath: meta.sectionPath,
+          contentPreview: meta.contentPreview,
+          level: meta.level,
+          parentChunkIndex: meta.parentChunkIndex,
+        };
 
-      await vectorStore.storeVector({
-        vector: embedding.vector,
-        text: chunk.text,
-        metadata,
-        embeddingModel: embedding.model,
-        tokenCount,
-      });
-
-      processedChunks += 1;
+        const vectorId = await vectorStore.storeVector(payload);
+        chunkIdByIndex.set(chunk.chunkIndex, vectorId);
+        processedChunks += 1;
+      } catch (chunkErr) {
+        const message =
+          chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+        errors.push(`chunk ${i}: ${message}`);
+        console.error(
+          `[indexingService] Chunk ${i} failed for ${documentId}:`,
+          chunkErr
+        );
+      }
     }
 
-    console.log(
-      `[indexingService] Embedding generation completed for ${documentId} (${processedChunks} chunks)`
-    );
+    // Link parentChunkId after all chunks are stored
+    for (const { chunk } of enriched) {
+      if (chunk.parentChunkIndex === undefined) continue;
+
+      const childId = chunkIdByIndex.get(chunk.chunkIndex);
+      const parentId = chunkIdByIndex.get(chunk.parentChunkIndex);
+
+      if (childId && parentId) {
+        await ChunkModel.findByIdAndUpdate(childId, {
+          parentChunkId: parentId,
+        });
+      }
+    }
+
+    if (processedChunks === 0) {
+      document.indexStatus = "failed";
+      document.indexError = errors.join("; ") || "All chunks failed to index";
+      await document.save();
+      return;
+    }
 
     document.indexStatus = "indexed";
     document.indexedAt = new Date();
     document.chunkCount = processedChunks;
-    document.embeddingModel = env.EMBEDDING_MODEL;
-    document.indexError = null;
+    document.embeddingModel = env.MISTRAL_EMBEDDING_MODEL;
+    document.indexError =
+      errors.length > 0
+        ? `Partial index: ${errors.length} chunk(s) failed`
+        : null;
     await document.save();
 
     console.log(
-      `[indexingService] Document indexed successfully: ${documentId}`
+      `[indexingService] Indexed ${processedChunks}/${topicChunks.length} topic chunks: ${documentId}`
     );
   } catch (err) {
     console.error(`[indexingService] Indexing failed for ${documentId}:`, err);
@@ -128,9 +213,6 @@ export async function runIndexingForDocument(
   }
 }
 
-/**
- * Rebuild the search index: extract text if needed, then chunk + embed.
- */
 export async function runReindexForDocument(
   documentId: string
 ): Promise<void> {
@@ -158,12 +240,7 @@ export async function runReindexForDocument(
       !document.extractedText?.trim();
 
     if (needsExtraction) {
-      console.log(
-        `[indexingService] Running extraction before reindex: ${documentId}`
-      );
-
       const { runExtractionForDocument } = await import("./extractionService");
-
       const extracted = await runExtractionForDocument(documentId, {
         skipAutoIndex: true,
       });
@@ -200,9 +277,6 @@ export async function runReindexForDocument(
   }
 }
 
-/**
- * Rebuild the search index from scratch for a document (synchronous).
- */
 export async function reindexDocument(documentId: string): Promise<void> {
   await runReindexForDocument(documentId);
 }
@@ -215,13 +289,10 @@ export function queueReindex(documentId: string): void {
   void runReindexForDocument(documentId);
 }
 
-export async function getDocumentChunks(
-  documentId: string,
-  userId: string
-) {
+export async function getDocumentChunks(documentId: string, userId: string) {
   return ChunkModel.find({ documentId, userId })
     .sort({ chunkIndex: 1 })
-    .select("-embedding")
+    .select("-embedding -searchableText")
     .lean();
 }
 

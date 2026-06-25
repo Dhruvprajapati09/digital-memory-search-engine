@@ -7,6 +7,8 @@ export interface SearchFilter {
   date?: DateFilterPreset;
   dateFrom?: string;
   dateTo?: string;
+  topic?: string;
+  tag?: string;
 }
 
 export interface SearchRequest {
@@ -17,12 +19,18 @@ export interface SearchRequest {
   date?: DateFilterPreset;
   dateFrom?: string;
   dateTo?: string;
+  topic?: string;
+  tag?: string;
 }
 
 export interface MatchedChunk {
   chunkIndex: number;
   score: number;
   text?: string;
+  topic?: string;
+  subtopic?: string;
+  title?: string;
+  sectionPath?: string[];
 }
 
 export interface SearchResult {
@@ -34,6 +42,8 @@ export interface SearchResult {
   highlightTerms: string[];
   matchedChunks: MatchedChunk[];
   createdAt: string;
+  topTopic?: string;
+  topSubtopic?: string;
 }
 
 export interface SearchResponse {
@@ -62,6 +72,24 @@ export interface SearchStats {
   totalIndexed: number;
 }
 
+export interface RankedChunkHit {
+  vectorId: string;
+  chunkIndex: number;
+  text: string;
+  topic?: string;
+  subtopic?: string;
+  title?: string;
+  sectionPath?: string[];
+  contentPreview: string;
+  vectorScore: number;
+  keywordScore: number;
+  topicScore: number;
+  titleScore: number;
+  phraseScore: number;
+  rrfScore: number;
+  finalScore: number;
+}
+
 export interface RankedDocumentGroup {
   documentId: string;
   title: string;
@@ -70,7 +98,10 @@ export interface RankedDocumentGroup {
   matchedChunks: MatchedChunk[];
   vectorScore: number;
   keywordScore: number;
+  topicScore?: number;
   chunkCount: number;
   finalScore: number;
   bestChunkText: string;
+  topTopic?: string;
+  topSubtopic?: string;
 }

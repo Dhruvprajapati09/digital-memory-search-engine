@@ -40,6 +40,15 @@ function SearchResultCard({ result }: SearchResultCardProps) {
         {highlightText(result.preview, result.highlightTerms)}
       </p>
 
+      {(result.topTopic || result.topSubtopic) && (
+        <p className="text-xs text-primary-700 mb-2">
+          Topic: {result.topTopic}
+          {result.topSubtopic && result.topSubtopic !== result.topTopic
+            ? ` → ${result.topSubtopic}`
+            : ''}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
         <span>Matched Chunks: {result.matchedChunks.length}</span>
         <Link
