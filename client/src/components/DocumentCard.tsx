@@ -33,6 +33,14 @@ function getPreviewText(document: Document): string | null {
 }
 
 function TypeIcon({ type }: { type: DocumentType }) {
+  if (type === 'text') {
+    return (
+      <svg className="w-10 h-10 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h10M4 18h7" />
+      </svg>
+    )
+  }
+
   if (type === 'image') {
     return (
       <svg className="w-10 h-10 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -60,6 +68,7 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
   const imageUrl = document.type === 'image' ? getFileUrl(document) : null
   const previewText = getPreviewText(document)
   const indexStatus = (document.indexStatus ?? 'pending') as IndexStatus
+  const extractionStatus = document.extractionStatus ?? 'pending'
 
   return (
     <Card className="flex flex-col sm:flex-row gap-4">
@@ -141,7 +150,7 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
           </div>
         )}
 
-        {!previewText && status === 'processing' && (
+        {!previewText && extractionStatus === 'processing' && (
           <p className="mt-3 text-sm text-text-muted">Extracting text...</p>
         )}
       </div>

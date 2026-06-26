@@ -2,7 +2,7 @@ import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
 import type { ExtractionStatus } from "../types/extraction.types";
 import type { IndexStatus } from "../types/embedding";
 
-export type DocumentType = "pdf" | "image" | "note";
+export type DocumentType = "pdf" | "image" | "note" | "text";
 
 export interface IDocument extends MongooseDocument {
   userId: mongoose.Types.ObjectId;
@@ -44,8 +44,8 @@ const documentSchema = new Schema<IDocument>(
       type: String,
       required: [true, "Document type is required"],
       enum: {
-        values: ["pdf", "image", "note"],
-        message: "Type must be pdf, image, or note",
+        values: ["pdf", "image", "note", "text"],
+        message: "Type must be pdf, image, note, or text",
       },
     },
     originalFileName: {

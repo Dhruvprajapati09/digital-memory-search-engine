@@ -3,12 +3,22 @@ import DocumentModel, { IDocument } from "../models/Document";
 import { UPLOAD_DIR } from "../middleware/upload";
 import { extractPdfText } from "./pdfExtractor";
 import { extractImageText } from "./ocrExtractor";
+import { extractPlainText } from "./plainTextExtractor";
 import { cleanText } from "./textCleaner";
 import { queueIndexing } from "./indexingService";
 import type { ExtractionResult } from "../types/extraction.types";
 
 /** Resolve a stored filename to a safe absolute path inside uploads/ */
 export function resolveSafeUploadPath(storedFileName: string): string {
+  if (
+    path.isAbsolute(storedFileName) ||
+    storedFileName.includes("..") ||
+    storedFileName.includes("/") ||
+    storedFileName.includes("\\")
+  ) {
+    throw new Error("Invalid file path");
+  }
+
   const absolutePath = path.resolve(UPLOAD_DIR, storedFileName);
   const uploadsWithSep = UPLOAD_DIR.endsWith(path.sep)
     ? UPLOAD_DIR
@@ -48,6 +58,8 @@ export async function extractTextFromDocument(
     result = await extractPdfText(filePath);
   } else if (document.type === "image") {
     result = await extractImageText(filePath);
+  } else if (document.type === "text") {
+    result = await extractPlainText(filePath);
   } else {
     return { success: false, error: "Unsupported document type for extraction" };
   }

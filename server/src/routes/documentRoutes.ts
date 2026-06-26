@@ -7,6 +7,7 @@ import {
   getDocument,
   getDocumentIndexStatus,
   getDocumentChunksHandler,
+  getDocumentInsightsHandler,
   reprocessDocument,
   reindexDocumentHandler,
   deleteDocument,
@@ -38,6 +39,7 @@ router.get("/", getDocuments);
 
 router.post("/:id/reprocess", reprocessDocument);
 router.post("/:id/reindex", reindexDocumentHandler);
+router.get("/:id/insights", getDocumentInsightsHandler);
 router.get("/:id/chunks", getDocumentChunksHandler);
 router.get("/:id/index-status", getDocumentIndexStatus);
 router.get("/:id", getDocument);
