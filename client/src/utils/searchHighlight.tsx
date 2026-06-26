@@ -59,5 +59,6 @@ export function formatDocumentType(type: string): string {
   if (type === 'pdf') return 'PDF'
   if (type === 'image') return 'Image'
   if (type === 'note') return 'Note'
+  if (type === 'video') return 'Video'
   return type
 }

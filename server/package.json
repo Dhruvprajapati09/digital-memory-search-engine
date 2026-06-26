@@ -30,7 +30,8 @@
     "pdf-parse": "^2.4.5",
     "react-router-dom": "^7.18.0",
     "tesseract.js": "^7.0.0",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "youtube-transcript": "^1.3.1"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

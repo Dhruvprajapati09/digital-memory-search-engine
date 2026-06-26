@@ -18,7 +18,11 @@ export interface IChunk extends MongooseDocument {
   keywords: string[];
   concepts: string[];
   tags: string[];
+<<<<<<< HEAD
   sourceType: "pdf" | "image" | "note";
+=======
+  sourceType: "pdf" | "image" | "note" | "video";
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   sectionPath: string[];
   contentPreview: string;
   level: ChunkLevel;
@@ -99,7 +103,11 @@ const chunkSchema = new Schema<IChunk>(
     },
     sourceType: {
       type: String,
+<<<<<<< HEAD
       enum: ["pdf", "image", "note"],
+=======
+      enum: ["pdf", "image", "note", "video"],
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
       required: true,
     },
     sectionPath: {

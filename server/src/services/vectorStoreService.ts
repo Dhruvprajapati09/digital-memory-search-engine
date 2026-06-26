@@ -22,6 +22,7 @@ import type {
 function mapChunkToSearchResult(
   chunk: Record<string, unknown> & { score: number }
 ): VectorSearchResult {
+<<<<<<< HEAD
   const metadata: VectorMetadata = {
     documentId: String(chunk.documentId),
     userId: String(chunk.userId),
@@ -52,6 +53,56 @@ function mapChunkToSearchResult(
     text: chunk.text as string,
     metadata,
     topic: chunk.topic as string,
+=======
+  const storedMeta =
+    (chunk.metadata as Record<string, unknown> | undefined) ?? {};
+
+  const metadata: VectorMetadata = {
+    documentId: String(chunk.documentId),
+    userId: String(chunk.userId),
+    chunkIndex: chunk.chunkIndex as number,
+    type: (storedMeta.type as string) ?? (chunk.sourceType as string),
+    documentTitle: storedMeta.documentTitle as string | undefined,
+    topic: (chunk.topic as string) ?? (storedMeta.topic as string | undefined),
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+    subtopic: chunk.subtopic as string | undefined,
+    title: chunk.title as string,
+    summary: chunk.summary as string,
+    keywords: chunk.keywords as string[],
+<<<<<<< HEAD
+    tags: chunk.tags as string[],
+    sectionPath: chunk.sectionPath as string[],
+    contentPreview: chunk.contentPreview as string,
+  };
+}
+
+=======
+    concepts: chunk.concepts as string[],
+    tags: chunk.tags as string[],
+    sectionPath: chunk.sectionPath as string[],
+    contentPreview: chunk.contentPreview as string,
+    level: chunk.level as string,
+    parentChunkIndex: chunk.parentChunkIndex as number | undefined,
+    parentChunkId: chunk.parentChunkId
+      ? String(chunk.parentChunkId)
+      : undefined,
+    youtubeVideoId: storedMeta.youtubeVideoId as string | undefined,
+    videoUrl: storedMeta.videoUrl as string | undefined,
+    channel: storedMeta.channel as string | undefined,
+    startSeconds: storedMeta.startSeconds as number | undefined,
+    endSeconds: storedMeta.endSeconds as number | undefined,
+    startTimeFormatted: storedMeta.startTimeFormatted as string | undefined,
+    endTimeFormatted: storedMeta.endTimeFormatted as string | undefined,
+    timestampSeconds: storedMeta.timestampSeconds as number | undefined,
+    timestampFormatted: storedMeta.timestampFormatted as string | undefined,
+  };
+
+  return {
+    vectorId: chunk.vectorId as string,
+    score: chunk.score,
+    text: chunk.text as string,
+    metadata,
+    topic: chunk.topic as string,
     subtopic: chunk.subtopic as string | undefined,
     title: chunk.title as string,
     summary: chunk.summary as string,
@@ -62,6 +113,7 @@ function mapChunkToSearchResult(
   };
 }
 
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 function buildPineconeMetadata(
   payload: StoreVectorPayload
 ): PineconeChunkMetadata {

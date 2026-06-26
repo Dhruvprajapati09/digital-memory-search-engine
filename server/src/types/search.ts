@@ -31,6 +31,13 @@ export interface MatchedChunk {
   subtopic?: string;
   title?: string;
   sectionPath?: string[];
+<<<<<<< HEAD
+=======
+  /** Video transcript timestamp (formatted MM:SS) */
+  timestamp?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 }
 
 export interface SearchResult {
@@ -44,6 +51,16 @@ export interface SearchResult {
   createdAt: string;
   topTopic?: string;
   topSubtopic?: string;
+<<<<<<< HEAD
+=======
+  /** Video-specific fields */
+  channel?: string;
+  thumbnail?: string;
+  timestamp?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+  youtubeVideoId?: string;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 }
 
 export interface SearchResponse {
@@ -88,6 +105,14 @@ export interface RankedChunkHit {
   phraseScore: number;
   rrfScore: number;
   finalScore: number;
+<<<<<<< HEAD
+=======
+  timestampFormatted?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+  youtubeVideoId?: string;
+  channel?: string;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 }
 
 export interface RankedDocumentGroup {

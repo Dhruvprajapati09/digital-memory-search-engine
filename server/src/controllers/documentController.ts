@@ -36,6 +36,12 @@ function formatDocument(doc: IDocument) {
     chunkCount: doc.chunkCount,
     embeddingModel: doc.embeddingModel,
     indexError: doc.indexError,
+    videoId: doc.videoId?.toString(),
+    youtubeVideoId: doc.youtubeVideoId,
+    videoUrl: doc.videoUrl,
+    videoChannel: doc.videoChannel,
+    videoThumbnail: doc.videoThumbnail,
+    videoDuration: doc.videoDuration,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

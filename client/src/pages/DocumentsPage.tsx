@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import UploadForm from '../components/UploadForm'
 import NoteForm from '../components/NoteForm'
+import VideoForm from '../components/VideoForm'
 import DocumentList from '../components/DocumentList'
 import Toast, { type ToastMessage } from '../components/ui/Toast'
 import type { Document } from '../types/document'
@@ -21,16 +22,24 @@ function DocumentsPage() {
     <div>
       <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Documents</h1>
       <p className="text-sm text-text-muted mb-6">
-        Upload PDFs and images, save text notes, and manage your personal documents.
+        Upload PDFs and images, save text notes, import YouTube videos, and manage your personal documents.
       </p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <UploadForm
           onUploaded={handleDocumentAdded}
           onSuccess={(msg) => showToast('success', msg)}
           onError={(msg) => showToast('error', msg)}
         />
         <NoteForm
+          onCreated={handleDocumentAdded}
+          onSuccess={(msg) => showToast('success', msg)}
+          onError={(msg) => showToast('error', msg)}
+        />
+      </div>
+
+      <div className="mb-8 max-w-xl">
+        <VideoForm
           onCreated={handleDocumentAdded}
           onSuccess={(msg) => showToast('success', msg)}
           onError={(msg) => showToast('error', msg)}

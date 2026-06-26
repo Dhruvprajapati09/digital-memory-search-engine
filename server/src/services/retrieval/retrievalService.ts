@@ -6,6 +6,10 @@ import type {
   RetrievalResult,
   RetrievedChunk,
 } from "../../types/chat";
+<<<<<<< HEAD
+=======
+import { buildContext } from "../ai/contextBuilder";
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
 /**
  * Retrieval service — semantic chunk retrieval for search and RAG.
@@ -59,6 +63,7 @@ export async function retrieveRelevantChunks(
 
 /** Format retrieved chunks into a context block for the LLM */
 export function buildContextFromChunks(chunks: RetrievedChunk[]): string {
+<<<<<<< HEAD
   if (chunks.length === 0) return "";
 
   return chunks
@@ -77,4 +82,7 @@ export function buildContextFromChunks(chunks: RetrievedChunk[]): string {
       return `${header}\n${chunk.text}`;
     })
     .join("\n\n---\n\n");
+=======
+  return buildContext(chunks).text;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 }

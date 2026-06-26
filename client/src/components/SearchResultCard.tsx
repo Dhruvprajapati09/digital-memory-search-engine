@@ -19,19 +19,52 @@ function SearchResultCard({ result }: SearchResultCardProps) {
     day: 'numeric',
   })
 
+  const isVideo = result.type === 'video'
+  const externalVideoUrl =
+    result.videoUrl ??
+    (result.youtubeVideoId && result.timestampSeconds !== undefined
+      ? `https://www.youtube.com/watch?v=${result.youtubeVideoId}&t=${result.timestampSeconds}s`
+      : result.youtubeVideoId
+        ? `https://www.youtube.com/watch?v=${result.youtubeVideoId}`
+        : undefined)
+
   return (
     <Card className="hover:border-primary-200 transition-colors">
       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-        <div>
-          <Link
-            to={`/dashboard/documents/${result.documentId}`}
-            className="text-lg font-semibold text-gray-900 hover:text-primary-600"
-          >
-            {result.title}
-          </Link>
-          <p className="text-xs text-text-muted mt-0.5">
-            {formatDocumentType(result.type)} · {createdDate}
-          </p>
+        <div className="flex gap-3 min-w-0 flex-1">
+          {isVideo && result.thumbnail && (
+            <img
+              src={result.thumbnail}
+              alt=""
+              className="w-20 h-14 object-cover rounded-lg shrink-0"
+            />
+          )}
+          <div className="min-w-0">
+            {isVideo && externalVideoUrl ? (
+              <a
+                href={externalVideoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-lg font-semibold text-gray-900 hover:text-primary-600"
+              >
+                {result.title}
+              </a>
+            ) : (
+              <Link
+                to={`/dashboard/documents/${result.documentId}`}
+                className="text-lg font-semibold text-gray-900 hover:text-primary-600"
+              >
+                {result.title}
+              </Link>
+            )}
+            <p className="text-xs text-text-muted mt-0.5">
+              {formatDocumentType(result.type)}
+              {result.channel ? ` · ${result.channel}` : ''}
+              {result.timestamp ? ` · ${result.timestamp}` : ''}
+              {' · '}
+              {createdDate}
+            </p>
+          </div>
         </div>
         <Badge variant="success">{formatMatchScore(result.score)}</Badge>
       </div>
@@ -51,6 +84,16 @@ function SearchResultCard({ result }: SearchResultCardProps) {
 
       <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
         <span>Matched Chunks: {result.matchedChunks.length}</span>
+        {isVideo && externalVideoUrl && (
+          <a
+            href={externalVideoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary-600 hover:underline"
+          >
+            Open at timestamp
+          </a>
+        )}
         <Link
           to={`/dashboard/documents/${result.documentId}/index`}
           className="text-primary-600 hover:underline"

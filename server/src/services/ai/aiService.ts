@@ -36,7 +36,12 @@ function isRetryableMistralError(err: unknown): boolean {
     message.includes("502") ||
     message.includes("503") ||
     message.includes("timeout") ||
+<<<<<<< HEAD
     message.includes("econnreset")
+=======
+    message.includes("econnreset") ||
+    message.includes("timed out")
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   );
 }
 
@@ -47,6 +52,49 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+<<<<<<< HEAD
+=======
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`LLM request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+function extractAnswerContent(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : "text" in part
+            ? String(part.text ?? "")
+            : ""
+      )
+      .join("")
+      .trim();
+  }
+
+  return "";
+}
+
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 /**
  * Generate a chat completion using Mistral.
  * Used by the RAG pipeline to produce grounded answers from retrieved context.
@@ -56,12 +104,20 @@ export async function generateChatCompletion(
   options?: ChatCompletionOptions
 ): Promise<ChatCompletionResult> {
   const model = options?.model ?? env.MISTRAL_CHAT_MODEL;
+<<<<<<< HEAD
+=======
+  const temperature = options?.temperature ?? env.MISTRAL_CHAT_TEMPERATURE;
+  const maxTokens = options?.maxTokens ?? env.MAX_OUTPUT_TOKENS;
+  const timeoutMs = env.AI_REQUEST_TIMEOUT_MS;
+
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
     try {
       const client = getMistralClient();
 
+<<<<<<< HEAD
       const response = await client.chat.complete({
         model,
         messages: messages.map((m) => ({
@@ -90,6 +146,23 @@ export async function generateChatCompletion(
                 .join("")
                 .trim()
             : "";
+=======
+      const response = await withTimeout(
+        client.chat.complete({
+          model,
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          temperature,
+          maxTokens,
+        }),
+        timeoutMs
+      );
+
+      const choice = response.choices?.[0];
+      const answer = extractAnswerContent(choice?.message?.content);
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
       if (!answer) {
         throw new Error("Mistral returned an empty chat completion");
@@ -119,6 +192,13 @@ export async function generateChatCompletion(
         continue;
       }
 
+<<<<<<< HEAD
+=======
+      if (lastError.message.toLowerCase().includes("rate limit")) {
+        throw new Error(`Mistral rate limit exceeded: ${lastError.message}`);
+      }
+
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
       throw new Error(`Mistral chat API failed: ${lastError.message}`);
     }
   }

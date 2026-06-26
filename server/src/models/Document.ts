@@ -2,7 +2,7 @@ import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
 import type { ExtractionStatus } from "../types/extraction.types";
 import type { IndexStatus } from "../types/embedding";
 
-export type DocumentType = "pdf" | "image" | "note";
+export type DocumentType = "pdf" | "image" | "note" | "video";
 
 export interface IDocument extends MongooseDocument {
   userId: mongoose.Types.ObjectId;
@@ -15,6 +15,13 @@ export interface IDocument extends MongooseDocument {
   mimeType?: string;
   noteContent?: string;
   extractedText?: string;
+  /** Reference to Video record for YouTube imports */
+  videoId?: mongoose.Types.ObjectId;
+  youtubeVideoId?: string;
+  videoUrl?: string;
+  videoChannel?: string;
+  videoThumbnail?: string;
+  videoDuration?: string;
   extractionStatus: ExtractionStatus;
   extractionError?: string | null;
   indexStatus: IndexStatus;
@@ -44,8 +51,8 @@ const documentSchema = new Schema<IDocument>(
       type: String,
       required: [true, "Document type is required"],
       enum: {
-        values: ["pdf", "image", "note"],
-        message: "Type must be pdf, image, or note",
+        values: ["pdf", "image", "note", "video"],
+        message: "Type must be pdf, image, note, or video",
       },
     },
     originalFileName: {
@@ -74,6 +81,32 @@ const documentSchema = new Schema<IDocument>(
       maxlength: [10000, "Note content cannot exceed 10000 characters"],
     },
     extractedText: {
+      type: String,
+      trim: true,
+    },
+    videoId: {
+      type: Schema.Types.ObjectId,
+      ref: "Video",
+      index: true,
+    },
+    youtubeVideoId: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    videoUrl: {
+      type: String,
+      trim: true,
+    },
+    videoChannel: {
+      type: String,
+      trim: true,
+    },
+    videoThumbnail: {
+      type: String,
+      trim: true,
+    },
+    videoDuration: {
       type: String,
       trim: true,
     },

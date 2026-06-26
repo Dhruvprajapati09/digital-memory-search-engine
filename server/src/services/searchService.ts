@@ -59,7 +59,7 @@ function parseLimit(value: unknown): number {
 }
 
 function parseDocumentType(value: unknown): DocumentType | undefined {
-  if (value === "pdf" || value === "image" || value === "note") {
+  if (value === "pdf" || value === "image" || value === "note" || value === "video") {
     return value;
   }
 
@@ -223,12 +223,22 @@ export async function searchDocuments(
     _id: { $in: uniqueDocIds },
     userId,
   })
-    .select("_id title type createdAt")
+    .select(
+      "_id title type createdAt videoChannel videoThumbnail videoUrl youtubeVideoId"
+    )
     .lean();
 
   const documentMeta = new Map<
     string,
-    { title: string; type: string; createdAt: Date }
+    {
+      title: string;
+      type: string;
+      createdAt: Date;
+      videoChannel?: string;
+      videoThumbnail?: string;
+      videoUrl?: string;
+      youtubeVideoId?: string;
+    }
   >();
 
   for (const doc of documents) {
@@ -236,6 +246,10 @@ export async function searchDocuments(
       title: doc.title,
       type: doc.type,
       createdAt: doc.createdAt,
+      videoChannel: doc.videoChannel,
+      videoThumbnail: doc.videoThumbnail,
+      videoUrl: doc.videoUrl,
+      youtubeVideoId: doc.youtubeVideoId,
     });
   }
 
@@ -246,6 +260,7 @@ export async function searchDocuments(
   const pageResults = ranked.slice(offset, offset + limit);
   const highlightTerms = tokenizeQuery(query);
 
+<<<<<<< HEAD
   const results: SearchResult[] = pageResults.map((item) => ({
     documentId: item.documentId,
     title: item.title,
@@ -267,6 +282,58 @@ export async function searchDocuments(
     topTopic: item.topTopic,
     topSubtopic: item.topSubtopic,
   }));
+=======
+  const results: SearchResult[] = pageResults.map((item) => {
+    const docMeta = documentMeta.get(item.documentId);
+    const topChunk = item.matchedChunks[0];
+    const isVideo = item.type === "video";
+
+    return {
+      documentId: item.documentId,
+      title: item.title,
+      type: item.type,
+      score: Math.round(item.finalScore * 100) / 100,
+      preview: generatePreviewSnippet(item.bestChunkText, query),
+      highlightTerms,
+      matchedChunks: item.matchedChunks.map(
+        ({
+          chunkIndex,
+          score,
+          topic,
+          subtopic,
+          title,
+          sectionPath,
+          timestamp,
+          timestampSeconds,
+          videoUrl,
+        }) => ({
+          chunkIndex,
+          score: Math.round(score * 100) / 100,
+          topic,
+          subtopic,
+          title,
+          sectionPath,
+          timestamp,
+          timestampSeconds,
+          videoUrl,
+        })
+      ),
+      createdAt: item.createdAt.toISOString(),
+      topTopic: item.topTopic,
+      topSubtopic: item.topSubtopic,
+      ...(isVideo
+        ? {
+            channel: docMeta?.videoChannel,
+            thumbnail: docMeta?.videoThumbnail,
+            timestamp: topChunk?.timestamp,
+            timestampSeconds: topChunk?.timestampSeconds,
+            videoUrl: topChunk?.videoUrl ?? docMeta?.videoUrl,
+            youtubeVideoId: docMeta?.youtubeVideoId,
+          }
+        : {}),
+    };
+  });
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
   const searchTimeMs = Date.now() - startedAt;
 

@@ -158,6 +158,14 @@ function scoreChunkHit(
     phraseScore,
     rrfScore: hit.rrfScore,
     finalScore,
+<<<<<<< HEAD
+=======
+    timestampFormatted: hit.metadata.timestampFormatted as string | undefined,
+    timestampSeconds: hit.metadata.timestampSeconds as number | undefined,
+    videoUrl: hit.metadata.videoUrl as string | undefined,
+    youtubeVideoId: hit.metadata.youtubeVideoId as string | undefined,
+    channel: hit.metadata.channel as string | undefined,
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   };
 }
 
@@ -232,6 +240,12 @@ export function rankDocumentGroups(
         subtopic: c.subtopic,
         title: c.title,
         sectionPath: c.sectionPath,
+<<<<<<< HEAD
+=======
+        timestamp: c.timestampFormatted,
+        timestampSeconds: c.timestampSeconds,
+        videoUrl: c.videoUrl,
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
       })),
       vectorScore: top?.vectorScore ?? 0,
       keywordScore: top?.keywordScore ?? 0,

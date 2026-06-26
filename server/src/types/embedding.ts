@@ -46,7 +46,11 @@ export interface StoreVectorPayload {
   keywords: string[];
   concepts: string[];
   tags: string[];
+<<<<<<< HEAD
   sourceType: "pdf" | "image" | "note";
+=======
+  sourceType: "pdf" | "image" | "note" | "video";
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   sectionPath: string[];
   contentPreview: string;
   level: "document" | "topic" | "subtopic" | "semantic";

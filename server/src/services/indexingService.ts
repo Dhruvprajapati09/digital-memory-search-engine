@@ -1,7 +1,17 @@
-import DocumentModel from "../models/Document";
+import DocumentModel, { IDocument } from "../models/Document";
 import ChunkModel from "../models/Chunk";
+<<<<<<< HEAD
 import { chunkTextByTopics } from "./chunking/topicChunkingService";
 import {
+=======
+import VideoModel from "../models/Video";
+import { chunkTextByTopics } from "./chunking/topicChunkingService";
+import {
+  chunkTranscriptByTopics,
+  type TimestampedTopicChunk,
+} from "./chunking/transcriptChunkingService";
+import {
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   enrichChunkMetadata,
   buildEmbeddingText,
   buildSearchableText,
@@ -10,8 +20,62 @@ import { generateEmbeddingsBatch } from "./embeddingService";
 import { vectorStore } from "./vectorStoreService";
 import { env } from "../config/env";
 import type { StoreVectorPayload, VectorMetadata } from "../types/embedding";
+<<<<<<< HEAD
 
 const EMBEDDING_BATCH_SIZE = 8;
+=======
+import type { TopicChunk } from "../types/chunking";
+import { invalidateSummaryCache } from "./ai/summarizer";
+
+const EMBEDDING_BATCH_SIZE = 8;
+
+type IndexableChunk = TopicChunk & {
+  videoMetadata?: TimestampedTopicChunk["videoMetadata"];
+};
+
+async function resolveChunksForDocument(
+  document: IDocument | null
+): Promise<IndexableChunk[]> {
+  if (!document) return [];
+
+  if (document.type === "video" && document.videoId) {
+    const video = await VideoModel.findById(document.videoId);
+
+    if (!video || video.transcriptSegments.length === 0) {
+      return [];
+    }
+
+    return chunkTranscriptByTopics(video.transcriptSegments, {
+      documentTitle: document.title,
+      videoTitle: document.title,
+      maxTokens: env.CHUNK_MAX_TOKENS,
+      youtubeVideoId: video.videoId,
+      channel: video.channel,
+      videoUrl: video.url,
+    });
+  }
+
+  return chunkTextByTopics(document.extractedText ?? "", {
+    documentTitle: document.title,
+    maxTokens: env.CHUNK_MAX_TOKENS,
+  });
+}
+
+async function syncVideoStatusAfterIndexing(
+  document: IDocument,
+  chunkCount: number,
+  failed: boolean,
+  errorMessage?: string
+): Promise<void> {
+  if (document.type !== "video" || !document.videoId) return;
+
+  await VideoModel.findByIdAndUpdate(document.videoId, {
+    status: failed ? "failed" : "indexed",
+    chunkCount,
+    statusError: errorMessage ?? null,
+  });
+}
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
 /**
  * Orchestrates topic-based indexing:
@@ -58,10 +122,14 @@ export async function runIndexingForDocument(
       document.userId.toString()
     );
 
+<<<<<<< HEAD
     const topicChunks = chunkTextByTopics(extractedText, {
       documentTitle: document.title,
       maxTokens: env.CHUNK_MAX_TOKENS,
     });
+=======
+    const topicChunks = await resolveChunksForDocument(document);
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
     console.log(
       `[indexingService] Topic chunks for ${documentId}: ${topicChunks.length}`
@@ -71,6 +139,7 @@ export async function runIndexingForDocument(
       document.indexStatus = "failed";
       document.indexError = "Topic chunking produced no chunks";
       await document.save();
+      await syncVideoStatusAfterIndexing(document, 0, true, document.indexError);
       return;
     }
 
@@ -107,6 +176,7 @@ export async function runIndexingForDocument(
         const embedding = embeddings[i];
         const searchableText = buildSearchableText(chunk, meta);
 
+<<<<<<< HEAD
         const metadata: VectorMetadata = {
           documentId,
           userId: document.userId.toString(),
@@ -133,6 +203,61 @@ export async function runIndexingForDocument(
           metadata,
           embeddingModel: embedding.model,
           tokenCount: chunk.tokenCount,
+=======
+        const videoMeta =
+          "videoMetadata" in chunk
+            ? (chunk as IndexableChunk).videoMetadata
+            : undefined;
+
+        const metadata: VectorMetadata = {
+          documentId,
+          userId: document.userId.toString(),
+          chunkIndex: chunk.chunkIndex,
+          type: document.type,
+          documentTitle: document.title,
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+          topic: meta.topic,
+          subtopic: meta.subtopic,
+          title: meta.title,
+          summary: meta.summary,
+          keywords: meta.keywords,
+          concepts: meta.concepts,
+          tags: meta.tags,
+<<<<<<< HEAD
+          sourceType: document.type,
+=======
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+          sectionPath: meta.sectionPath,
+          contentPreview: meta.contentPreview,
+          level: meta.level,
+          parentChunkIndex: meta.parentChunkIndex,
+<<<<<<< HEAD
+        };
+
+=======
+          ...(videoMeta
+            ? {
+                sourceType: "video",
+                youtubeVideoId: videoMeta.youtubeVideoId,
+                videoUrl: videoMeta.videoUrl,
+                channel: videoMeta.channel,
+                startSeconds: videoMeta.startSeconds,
+                endSeconds: videoMeta.endSeconds,
+                startTimeFormatted: videoMeta.startTimeFormatted,
+                endTimeFormatted: videoMeta.endTimeFormatted,
+                timestampSeconds: videoMeta.startSeconds,
+                timestampFormatted: videoMeta.startTimeFormatted,
+              }
+            : {}),
+        };
+
+        const payload: StoreVectorPayload = {
+          vector: embedding.vector,
+          text: chunk.text,
+          searchableText,
+          metadata,
+          embeddingModel: embedding.model,
+          tokenCount: chunk.tokenCount,
           topic: meta.topic,
           subtopic: meta.subtopic,
           title: meta.title,
@@ -147,6 +272,7 @@ export async function runIndexingForDocument(
           parentChunkIndex: meta.parentChunkIndex,
         };
 
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
         const vectorId = await vectorStore.storeVector(payload);
         chunkIdByIndex.set(chunk.chunkIndex, vectorId);
         processedChunks += 1;
@@ -179,6 +305,15 @@ export async function runIndexingForDocument(
       document.indexStatus = "failed";
       document.indexError = errors.join("; ") || "All chunks failed to index";
       await document.save();
+<<<<<<< HEAD
+=======
+      await syncVideoStatusAfterIndexing(
+        document,
+        0,
+        true,
+        document.indexError
+      );
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
       return;
     }
 
@@ -191,6 +326,10 @@ export async function runIndexingForDocument(
         ? `Partial index: ${errors.length} chunk(s) failed`
         : null;
     await document.save();
+
+    await syncVideoStatusAfterIndexing(document, processedChunks, false);
+
+    invalidateSummaryCache(documentId);
 
     console.log(
       `[indexingService] Indexed ${processedChunks}/${topicChunks.length} topic chunks: ${documentId}`
