@@ -64,6 +64,23 @@ export interface SearchStatsResponse {
   stats: SearchStats
 }
 
+export interface MemoryCitation {
+  documentId: string
+  title: string
+  type: DocumentType
+  chunkIndex: number
+  score: number
+  text: string
+}
+
+export interface MemoryAnswer {
+  success: boolean
+  query: string
+  answer: string
+  citations: MemoryCitation[]
+  model: string
+}
+
 export interface DashboardStats extends SearchStats {
   totalDocuments: number
   totalExtracted: number

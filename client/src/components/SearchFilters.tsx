@@ -20,6 +20,7 @@ const TYPE_OPTIONS: Array<{ value: DocumentType | ''; label: string }> = [
   { value: 'pdf', label: 'PDF' },
   { value: 'image', label: 'Image' },
   { value: 'note', label: 'Note' },
+  { value: 'text', label: 'Text' },
 ]
 
 const DATE_OPTIONS: Array<{ value: DateFilterPreset | ''; label: string }> = [

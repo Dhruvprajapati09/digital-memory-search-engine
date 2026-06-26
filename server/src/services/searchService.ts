@@ -58,7 +58,12 @@ function parseLimit(value: unknown): number {
 }
 
 function parseDocumentType(value: unknown): DocumentType | undefined {
-  if (value === "pdf" || value === "image" || value === "note") {
+  if (
+    value === "pdf" ||
+    value === "image" ||
+    value === "note" ||
+    value === "text"
+  ) {
     return value;
   }
 

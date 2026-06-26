@@ -4,6 +4,7 @@ import type {
   SearchResponse,
   SearchHistoryResponse,
   SearchStatsResponse,
+  MemoryAnswer,
 } from '../types/search'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -101,4 +102,14 @@ export async function clearSearchHistory(): Promise<void> {
   })
 
   await handleResponse(response)
+}
+
+export async function askMemory(question: string): Promise<MemoryAnswer> {
+  const response = await fetch(`${API_BASE}/search/ask`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ question }),
+  })
+
+  return handleResponse<MemoryAnswer>(response)
 }

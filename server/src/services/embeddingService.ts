@@ -1,9 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
+import crypto from "crypto";
 import { env } from "../config/env";
 import type { EmbeddingResponse } from "../types/embedding";
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
+const LOCAL_EMBEDDING_DIMENSIONS = 384;
+const LOCAL_EMBEDDING_MODEL = "local-hash-embedding-v1";
 
 let geminiClient: GoogleGenAI | null = null;
 
@@ -39,6 +42,58 @@ function isRetryableError(err: unknown): boolean {
   );
 }
 
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1);
+}
+
+function hashToken(token: string, salt: string): number {
+  const digest = crypto
+    .createHash("sha256")
+    .update(`${salt}:${token}`)
+    .digest();
+
+  return digest.readUInt32BE(0);
+}
+
+export function generateLocalEmbeddingVector(text: string): number[] {
+  const vector = Array.from({ length: LOCAL_EMBEDDING_DIMENSIONS }, () => 0);
+  const tokens = tokenize(text);
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const features = [
+      token,
+      index > 0 ? `${tokens[index - 1]} ${token}` : "",
+      index < tokens.length - 1 ? `${token} ${tokens[index + 1]}` : "",
+    ].filter(Boolean);
+
+    for (const feature of features) {
+      const hash = hashToken(feature, "feature");
+      const bucket = hash % LOCAL_EMBEDDING_DIMENSIONS;
+      const sign = hashToken(feature, "sign") % 2 === 0 ? 1 : -1;
+      vector[bucket] += sign * (feature.includes(" ") ? 1.5 : 1);
+    }
+  }
+
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+
+  if (norm === 0) {
+    return vector;
+  }
+
+  return vector.map((value) => value / norm);
+}
+
+function shouldUseLocalEmbeddings(): boolean {
+  return !env.GEMINI_API_KEY || env.EMBEDDING_MODEL === LOCAL_EMBEDDING_MODEL;
+}
+
 export async function generateEmbedding(
   text: string,
   options?: { taskType?: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY" }
@@ -47,6 +102,13 @@ export async function generateEmbedding(
 
   if (!trimmed) {
     throw new Error("Cannot generate embedding for empty text");
+  }
+
+  if (shouldUseLocalEmbeddings()) {
+    return {
+      vector: generateLocalEmbeddingVector(trimmed),
+      model: LOCAL_EMBEDDING_MODEL,
+    };
   }
 
   let lastError: Error | null = null;

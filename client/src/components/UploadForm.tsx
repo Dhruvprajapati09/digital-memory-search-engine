@@ -32,7 +32,7 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
     setSuccess('')
 
     if (!file) {
-      setError('Please select a PDF or image file to upload.')
+      setError('Please select a supported file to upload.')
       return
     }
 
@@ -62,7 +62,7 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
     <Card>
       <h2 className="text-lg font-semibold text-gray-900 mb-1">Upload File</h2>
       <p className="text-sm text-text-muted mb-4">
-        Upload PDF or image files (max 10 MB).
+        Upload PDF, image, text, Markdown, CSV, JSON, or HTML files (max 10 MB).
       </p>
 
       <form onSubmit={handleSubmit}>
@@ -85,7 +85,7 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
             ref={fileInputRef}
             id="file-upload"
             type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.md,.markdown,.csv,.json,.html,.htm,application/pdf,image/*,text/*,application/json"
             onChange={handleFileChange}
             className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
           />

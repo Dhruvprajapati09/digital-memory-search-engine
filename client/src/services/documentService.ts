@@ -9,6 +9,7 @@ import type {
   IndexStatusResponse,
   DocumentStatsResponse,
   Chunk,
+  DocumentInsights,
 } from '../types/document'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -161,4 +162,15 @@ export async function deleteDocument(id: string): Promise<void> {
   })
 
   await handleResponse<DeleteDocumentResponse>(response)
+}
+
+export async function fetchDocumentInsights(
+  id: string,
+): Promise<DocumentInsights> {
+  const response = await fetch(`${API_BASE}/documents/${id}/insights`, {
+    method: 'GET',
+    headers: authHeaders(),
+  })
+
+  return handleResponse<DocumentInsights>(response)
 }

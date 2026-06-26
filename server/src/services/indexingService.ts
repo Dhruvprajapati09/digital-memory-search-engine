@@ -71,11 +71,13 @@ export async function runIndexingForDocument(
     );
 
     let processedChunks = 0;
+    let embeddingModel = env.EMBEDDING_MODEL;
 
     for (const chunk of textChunks) {
       const tokenCount = calculateTokens(chunk.text);
 
       const embedding = await generateEmbedding(chunk.text);
+      embeddingModel = embedding.model;
 
       const metadata: VectorMetadata = {
         documentId: documentId,
@@ -103,7 +105,7 @@ export async function runIndexingForDocument(
     document.indexStatus = "indexed";
     document.indexedAt = new Date();
     document.chunkCount = processedChunks;
-    document.embeddingModel = env.EMBEDDING_MODEL;
+    document.embeddingModel = embeddingModel;
     document.indexError = null;
     await document.save();
 

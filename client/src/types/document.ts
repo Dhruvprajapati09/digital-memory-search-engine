@@ -1,4 +1,4 @@
-export type DocumentType = 'pdf' | 'image' | 'note'
+export type DocumentType = 'pdf' | 'image' | 'note' | 'text'
 
 export type ExtractionStatus =
   | 'pending'
@@ -103,6 +103,27 @@ export interface DocumentStats {
   totalExtracted: number
   totalIndexed: number
   totalChunks: number
+}
+
+export interface Flashcard {
+  question: string
+  answer: string
+}
+
+export interface QuizQuestion {
+  question: string
+  answer: string
+  options: string[]
+}
+
+export interface DocumentInsights {
+  success: boolean
+  summary: string
+  keyPoints: string[]
+  tags: string[]
+  actionItems: string[]
+  flashcards: Flashcard[]
+  quiz: QuizQuestion[]
 }
 
 export interface ExtractionResult {

@@ -8,9 +8,15 @@ import Spinner from '../components/ui/Spinner'
 import Badge from '../components/ui/Badge'
 import {
   fetchDocument,
+  fetchDocumentInsights,
   reprocessDocument,
 } from '../services/documentService'
-import type { Document, ExtractionStatus, IndexStatus } from '../types/document'
+import type {
+  Document,
+  DocumentInsights,
+  ExtractionStatus,
+  IndexStatus,
+} from '../types/document'
 
 function getExtractionStatus(document: Document): ExtractionStatus {
   return document.status ?? document.extractionStatus ?? 'pending'
@@ -37,6 +43,8 @@ function DocumentDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reprocessing, setReprocessing] = useState(false)
+  const [insights, setInsights] = useState<DocumentInsights | null>(null)
+  const [insightsError, setInsightsError] = useState('')
 
   const loadDocument = useCallback(async () => {
     if (!id) return
@@ -74,6 +82,33 @@ function DocumentDetailPage() {
     const interval = window.setInterval(loadDocument, 2500)
     return () => window.clearInterval(interval)
   }, [document, loadDocument])
+
+  useEffect(() => {
+    if (!id || !document || getExtractionStatus(document) !== 'completed') {
+      return
+    }
+
+    let cancelled = false
+
+    fetchDocumentInsights(id)
+      .then((data) => {
+        if (!cancelled) {
+          setInsights(data)
+          setInsightsError('')
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setInsightsError(
+            err instanceof Error ? err.message : 'Failed to load insights.',
+          )
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, document])
 
   const handleReprocess = async () => {
     if (!id) return
@@ -219,6 +254,133 @@ function DocumentDetailPage() {
           onReprocess={handleReprocess}
           reprocessing={reprocessing}
         />
+      </Card>
+
+      <Card className="mt-6">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Generated learning aids
+          </h2>
+          <p className="text-sm text-text-muted mt-1">
+            Summary, tags, flashcards, quiz prompts, and action items from this memory.
+          </p>
+        </div>
+
+        {insightsError && (
+          <p className="text-sm text-red-500" role="alert">
+            {insightsError}
+          </p>
+        )}
+
+        {!insights && !insightsError && extractionStatus === 'completed' && (
+          <Spinner label="Generating insights" />
+        )}
+
+        {extractionStatus !== 'completed' && (
+          <p className="text-sm text-text-muted">
+            Insights will appear after extraction completes.
+          </p>
+        )}
+
+        {insights && (
+          <div className="space-y-6">
+            <section>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                Summary
+              </h3>
+              <p className="text-sm leading-6 text-gray-800">
+                {insights.summary}
+              </p>
+            </section>
+
+            {insights.tags.length > 0 && (
+              <section>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                  Suggested tags
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {insights.tags.map((tag) => (
+                    <Badge key={tag} variant="primary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {insights.keyPoints.length > 0 && (
+              <section>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                  Key points
+                </h3>
+                <ul className="space-y-2 text-sm text-gray-800">
+                  {insights.keyPoints.map((point) => (
+                    <li key={point}>· {point}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {insights.actionItems.length > 0 && (
+              <section>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                  Action items
+                </h3>
+                <ul className="space-y-2 text-sm text-gray-800">
+                  {insights.actionItems.map((item) => (
+                    <li key={item}>· {item}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {insights.flashcards.length > 0 && (
+              <section>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                  Flashcards
+                </h3>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {insights.flashcards.map((card) => (
+                    <div
+                      key={card.question}
+                      className="rounded-lg border border-border bg-gray-50 p-3"
+                    >
+                      <p className="text-sm font-medium text-gray-900">
+                        {card.question}
+                      </p>
+                      <p className="text-sm text-text-muted mt-2">
+                        {card.answer}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {insights.quiz.length > 0 && (
+              <section>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                  Quiz
+                </h3>
+                <div className="space-y-3">
+                  {insights.quiz.map((question) => (
+                    <div
+                      key={question.question}
+                      className="rounded-lg border border-border p-3"
+                    >
+                      <p className="text-sm font-medium text-gray-900">
+                        {question.question}
+                      </p>
+                      <p className="text-xs text-text-muted mt-2">
+                        Answer: {question.answer}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   )

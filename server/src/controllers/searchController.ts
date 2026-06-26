@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { asyncHandler, AppError } from "../middleware/error.middleware";
 import { searchDocuments } from "../services/searchService";
+import { answerFromMemory } from "../services/memoryAssistantService";
 import {
   getRecentSearches,
   deleteSearchHistoryItem,
@@ -37,6 +38,19 @@ export const searchHandler = asyncHandler(
     };
 
     const result = await searchDocuments(req.user._id.toString(), params);
+
+    res.status(200).json(result);
+  }
+);
+
+export const askMemoryHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.user) {
+      throw new AppError("Unauthorized", 401);
+    }
+
+    const question = String(req.body?.question ?? req.body?.q ?? "");
+    const result = await answerFromMemory(req.user._id.toString(), question);
 
     res.status(200).json(result);
   }

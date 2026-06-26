@@ -15,6 +15,7 @@ import {
   deleteDocumentIndex,
 } from "../services/indexingService";
 import { cleanText } from "../services/textCleaner";
+import { getDocumentInsights } from "../services/documentInsightsService";
 
 /** Shape documents consistently for API list responses */
 function formatDocument(doc: IDocument) {
@@ -96,9 +97,23 @@ function sanitizeText(value: unknown, fieldName: string, maxLength = 200): strin
   return trimmed;
 }
 
-function getDocumentTypeFromMime(mimeType: string): "pdf" | "image" {
+function getDocumentTypeFromMime(
+  mimeType: string,
+  originalName: string
+): "pdf" | "image" | "text" {
+  const extension = originalName.split(".").pop()?.toLowerCase();
+
   if (mimeType === "application/pdf") return "pdf";
   if (mimeType.startsWith("image/")) return "image";
+  if (
+    mimeType.startsWith("text/") ||
+    mimeType === "application/json" ||
+    ["txt", "md", "markdown", "csv", "json", "html", "htm"].includes(
+      extension ?? ""
+    )
+  ) {
+    return "text";
+  }
   throw new AppError("Unsupported file type", 400);
 }
 
@@ -144,7 +159,10 @@ export const uploadDocument = asyncHandler(
       ? sanitizeText(req.body.title, "Title")
       : req.file.originalname;
 
-    const docType = getDocumentTypeFromMime(req.file.mimetype);
+    const docType = getDocumentTypeFromMime(
+      req.file.mimetype,
+      req.file.originalname
+    );
     const relativePath = `uploads/${req.file.filename}`;
 
     const document = await DocumentModel.create({
@@ -285,6 +303,22 @@ export const getDocumentChunksHandler = asyncHandler(
       success: true,
       chunks: chunks.map(formatChunk),
     });
+  }
+);
+
+export const getDocumentInsightsHandler = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (!req.user) {
+      throw new AppError("Unauthorized", 401);
+    }
+
+    const documentId = parseDocumentId(req.params.id);
+    const insights = await getDocumentInsights(
+      req.user._id.toString(),
+      documentId
+    );
+
+    res.status(200).json(insights);
   }
 );
 

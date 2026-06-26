@@ -17,6 +17,26 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/jpg",
   "image/png",
   "image/webp",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/html",
+  "application/json",
+]);
+
+const ALLOWED_EXTENSIONS = new Set([
+  ".pdf",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".txt",
+  ".md",
+  ".markdown",
+  ".csv",
+  ".json",
+  ".html",
+  ".htm",
 ]);
 
 const storage = multer.diskStorage({
@@ -30,14 +50,16 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
-  if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  if (ALLOWED_MIME_TYPES.has(file.mimetype) || ALLOWED_EXTENSIONS.has(ext)) {
     cb(null, true);
     return;
   }
 
   cb(
     new Error(
-      "Unsupported file type. Allowed types: PDF, JPG, JPEG, PNG, WEBP"
+      "Unsupported file type. Allowed types: PDF, images, TXT, Markdown, CSV, JSON, HTML"
     )
   );
 };
