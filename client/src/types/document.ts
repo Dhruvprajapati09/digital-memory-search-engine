@@ -1,4 +1,4 @@
-export type DocumentType = 'pdf' | 'image' | 'note'
+export type DocumentType = 'pdf' | 'image' | 'note' | 'video'
 
 export type ExtractionStatus =
   | 'pending'
@@ -31,6 +31,12 @@ export interface Document {
   chunkCount?: number
   embeddingModel?: string | null
   indexError?: string | null
+  videoId?: string
+  youtubeVideoId?: string
+  videoUrl?: string
+  videoChannel?: string
+  videoThumbnail?: string
+  videoDuration?: string
   createdAt: string
   updatedAt?: string
 }

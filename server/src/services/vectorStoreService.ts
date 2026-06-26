@@ -1,35 +1,144 @@
+import mongoose from "mongoose";
 import ChunkModel, { IChunk } from "../models/Chunk";
+import {
+  upsertVectors,
+  queryVectors,
+  deleteVectorsByIds,
+  deleteVectorsByDocumentFilter,
+  deleteVectorById,
+  buildPineconeFilter,
+} from "./pinecone/pineconeService";
+import type { PineconeChunkMetadata } from "../types/pinecone";
 import type {
   IVectorStore,
   StoreVectorPayload,
   VectorSearchQuery,
   VectorSearchResult,
+  KeywordSearchQuery,
+  KeywordSearchResult,
+  VectorMetadata,
 } from "../types/embedding";
 
-/** Cosine similarity between two vectors (used when Atlas Vector Search is unavailable) */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
+function mapChunkToSearchResult(
+  chunk: Record<string, unknown> & { score: number }
+): VectorSearchResult {
+<<<<<<< HEAD
+  const metadata: VectorMetadata = {
+    documentId: String(chunk.documentId),
+    userId: String(chunk.userId),
+    chunkIndex: chunk.chunkIndex as number,
+    type: chunk.sourceType as string,
+    documentTitle: (chunk.metadata as Record<string, unknown>)?.documentTitle as
+      | string
+      | undefined,
+    topic: chunk.topic as string,
+    subtopic: chunk.subtopic as string | undefined,
+    title: chunk.title as string,
+    summary: chunk.summary as string,
+    keywords: chunk.keywords as string[],
+    concepts: chunk.concepts as string[],
+    tags: chunk.tags as string[],
+    sectionPath: chunk.sectionPath as string[],
+    contentPreview: chunk.contentPreview as string,
+    level: chunk.level as string,
+    parentChunkIndex: chunk.parentChunkIndex as number | undefined,
+    parentChunkId: chunk.parentChunkId
+      ? String(chunk.parentChunkId)
+      : undefined,
+  };
 
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
+  return {
+    vectorId: chunk.vectorId as string,
+    score: chunk.score,
+    text: chunk.text as string,
+    metadata,
+    topic: chunk.topic as string,
+=======
+  const storedMeta =
+    (chunk.metadata as Record<string, unknown> | undefined) ?? {};
 
-  for (let i = 0; i < a.length; i += 1) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
+  const metadata: VectorMetadata = {
+    documentId: String(chunk.documentId),
+    userId: String(chunk.userId),
+    chunkIndex: chunk.chunkIndex as number,
+    type: (storedMeta.type as string) ?? (chunk.sourceType as string),
+    documentTitle: storedMeta.documentTitle as string | undefined,
+    topic: (chunk.topic as string) ?? (storedMeta.topic as string | undefined),
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+    subtopic: chunk.subtopic as string | undefined,
+    title: chunk.title as string,
+    summary: chunk.summary as string,
+    keywords: chunk.keywords as string[],
+<<<<<<< HEAD
+    tags: chunk.tags as string[],
+    sectionPath: chunk.sectionPath as string[],
+    contentPreview: chunk.contentPreview as string,
+  };
+}
 
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  return denominator === 0 ? 0 : dot / denominator;
+=======
+    concepts: chunk.concepts as string[],
+    tags: chunk.tags as string[],
+    sectionPath: chunk.sectionPath as string[],
+    contentPreview: chunk.contentPreview as string,
+    level: chunk.level as string,
+    parentChunkIndex: chunk.parentChunkIndex as number | undefined,
+    parentChunkId: chunk.parentChunkId
+      ? String(chunk.parentChunkId)
+      : undefined,
+    youtubeVideoId: storedMeta.youtubeVideoId as string | undefined,
+    videoUrl: storedMeta.videoUrl as string | undefined,
+    channel: storedMeta.channel as string | undefined,
+    startSeconds: storedMeta.startSeconds as number | undefined,
+    endSeconds: storedMeta.endSeconds as number | undefined,
+    startTimeFormatted: storedMeta.startTimeFormatted as string | undefined,
+    endTimeFormatted: storedMeta.endTimeFormatted as string | undefined,
+    timestampSeconds: storedMeta.timestampSeconds as number | undefined,
+    timestampFormatted: storedMeta.timestampFormatted as string | undefined,
+  };
+
+  return {
+    vectorId: chunk.vectorId as string,
+    score: chunk.score,
+    text: chunk.text as string,
+    metadata,
+    topic: chunk.topic as string,
+    subtopic: chunk.subtopic as string | undefined,
+    title: chunk.title as string,
+    summary: chunk.summary as string,
+    keywords: chunk.keywords as string[],
+    tags: chunk.tags as string[],
+    sectionPath: chunk.sectionPath as string[],
+    contentPreview: chunk.contentPreview as string,
+  };
+}
+
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+function buildPineconeMetadata(
+  payload: StoreVectorPayload
+): PineconeChunkMetadata {
+  return {
+    userId: payload.metadata.userId,
+    documentId: payload.metadata.documentId,
+    chunkIndex: payload.metadata.chunkIndex,
+    topic: payload.topic,
+    subtopic: payload.subtopic ?? "",
+    title: payload.title,
+    sourceType: payload.sourceType,
+    tags: (payload.tags ?? []).map((t) => t.toLowerCase()),
+  };
 }
 
 /**
- * MongoDB-backed vector store.
- * Stores embeddings in the chunks collection.
- * Uses in-memory cosine similarity for search (Milestone 7 can switch to Atlas $vectorSearch).
+ * Hybrid vector store:
+ * - Pinecone: embedding vectors + filter metadata
+ * - MongoDB: full chunk text, enrichment fields, keyword/BM25 search
  */
-class MongoVectorStore implements IVectorStore {
+class PineconeVectorStore implements IVectorStore {
+  /**
+   * Persist chunk in MongoDB, then upsert its embedding to Pinecone.
+   * MongoDB _id becomes the Pinecone vector ID for 1:1 mapping.
+   */
   async storeVector(payload: StoreVectorPayload): Promise<string> {
     const chunk = (await ChunkModel.create({
       documentId: payload.metadata.documentId,
@@ -38,8 +147,23 @@ class MongoVectorStore implements IVectorStore {
       text: payload.text,
       tokenCount: payload.tokenCount,
       vectorId: "pending",
-      embedding: payload.vector,
       embeddingModel: payload.embeddingModel,
+      topic: payload.topic,
+      subtopic: payload.subtopic,
+      title: payload.title,
+      summary: payload.summary,
+      keywords: payload.keywords,
+      concepts: payload.concepts,
+      tags: payload.tags,
+      sourceType: payload.sourceType,
+      sectionPath: payload.sectionPath,
+      contentPreview: payload.contentPreview,
+      level: payload.level,
+      parentChunkIndex: payload.parentChunkIndex,
+      parentChunkId: payload.parentChunkId
+        ? new mongoose.Types.ObjectId(payload.parentChunkId)
+        : undefined,
+      searchableText: payload.searchableText,
       metadata: payload.metadata,
     })) as IChunk;
 
@@ -47,22 +171,46 @@ class MongoVectorStore implements IVectorStore {
     chunk.vectorId = vectorId;
     await chunk.save();
 
-    console.log(`[vectorStore] Vector saved: ${vectorId}`);
+    await upsertVectors([
+      {
+        id: vectorId,
+        values: payload.vector,
+        metadata: buildPineconeMetadata(payload),
+      },
+    ]);
+
     return vectorId;
   }
 
   async deleteVector(vectorId: string, userId: string): Promise<void> {
-    await ChunkModel.deleteOne({ _id: vectorId, userId });
+    // MongoDB enforces ownership before deleting from Pinecone
+    const deleted = await ChunkModel.deleteOne({ _id: vectorId, userId });
+    if (deleted.deletedCount > 0) {
+      await deleteVectorById(vectorId);
+    }
   }
 
   async deleteVectorsByDocument(
     documentId: string,
     userId: string
   ): Promise<void> {
-    const result = await ChunkModel.deleteMany({ documentId, userId });
-    console.log(
-      `[vectorStore] Deleted ${result.deletedCount} vectors for document ${documentId}`
-    );
+    const chunks = await ChunkModel.find({ documentId, userId })
+      .select("vectorId")
+      .lean();
+
+    const vectorIds = chunks
+      .map((chunk) => chunk.vectorId)
+      .filter((id): id is string => Boolean(id) && id !== "pending");
+
+    await ChunkModel.deleteMany({ documentId, userId });
+
+    if (vectorIds.length > 0) {
+      await deleteVectorsByIds(vectorIds);
+      return;
+    }
+
+    // No MongoDB chunks — best-effort cleanup of orphaned Pinecone vectors.
+    await deleteVectorsByDocumentFilter(documentId, userId);
   }
 
   async updateVector(
@@ -74,83 +222,196 @@ class MongoVectorStore implements IVectorStore {
       {
         text: payload.text,
         tokenCount: payload.tokenCount,
-        embedding: payload.vector,
         embeddingModel: payload.embeddingModel,
+        topic: payload.topic,
+        subtopic: payload.subtopic,
+        title: payload.title,
+        summary: payload.summary,
+        keywords: payload.keywords,
+        concepts: payload.concepts,
+        tags: payload.tags,
+        sectionPath: payload.sectionPath,
+        contentPreview: payload.contentPreview,
+        searchableText: payload.searchableText,
         metadata: payload.metadata,
       }
     );
+
+    await upsertVectors([
+      {
+        id: vectorId,
+        values: payload.vector,
+        metadata: buildPineconeMetadata(payload),
+      },
+    ]);
   }
 
   /**
-   * Semantic search over stored chunks.
-   * Milestone 7 will replace this with MongoDB Atlas $vectorSearch or Pinecone.
+   * Semantic search via Pinecone, hydrated with full chunk data from MongoDB.
    */
   async searchVector(query: VectorSearchQuery): Promise<VectorSearchResult[]> {
     const limit = query.limit ?? 10;
     const minScore = query.minScore ?? 0;
 
-    const filter: Record<string, unknown> = { userId: query.userId };
+    const filter = buildPineconeFilter({
+      userId: query.userId,
+      documentIds: query.documentIds,
+      topic: query.topic,
+      tags: query.tags,
+    });
 
-    if (query.documentIds && query.documentIds.length > 0) {
-      filter.documentId = { $in: query.documentIds };
+    const matches = await queryVectors({
+      vector: query.vector,
+      topK: limit,
+      filter,
+      minScore,
+    });
+
+    if (matches.length === 0) return [];
+
+    const chunkIds = matches.map((m) => m.id);
+    const chunks = await ChunkModel.find({
+      _id: { $in: chunkIds },
+      userId: query.userId,
+    }).lean();
+
+    const chunkById = new Map(chunks.map((c) => [c._id.toString(), c]));
+    const scoreById = new Map(matches.map((m) => [m.id, m.score]));
+
+    const results: VectorSearchResult[] = [];
+
+    for (const match of matches) {
+      const chunk = chunkById.get(match.id);
+      if (!chunk) continue;
+
+      results.push(
+        mapChunkToSearchResult({
+          ...(chunk as unknown as Record<string, unknown>),
+          score: scoreById.get(match.id) ?? match.score,
+        })
+      );
     }
 
-    const chunks = await ChunkModel.find(filter).lean();
+    return results;
+  }
+
+  /** MongoDB full-text search on enriched chunk fields (hybrid search keyword leg) */
+  async searchKeyword(
+    query: KeywordSearchQuery
+  ): Promise<KeywordSearchResult[]> {
+    const limit = query.limit ?? 20;
+    const trimmed = query.query.trim();
+
+    if (!trimmed) return [];
+
+    const filter: Record<string, unknown> = {
+      userId: new mongoose.Types.ObjectId(query.userId),
+      $text: { $search: trimmed },
+    };
+
+    if (query.documentIds && query.documentIds.length > 0) {
+      filter.documentId = {
+        $in: query.documentIds.map((id) => new mongoose.Types.ObjectId(id)),
+      };
+    }
+
+    try {
+      const chunks = await ChunkModel.find(filter, {
+        score: { $meta: "textScore" },
+      })
+        .sort({ score: { $meta: "textScore" } })
+        .limit(limit)
+        .lean();
+
+      return chunks.map((chunk) => {
+        const textScore =
+          (chunk as unknown as { score?: number }).score ?? 0;
+
+        return {
+          ...mapChunkToSearchResult({
+            ...(chunk as unknown as Record<string, unknown>),
+            score: textScore,
+          }),
+          score: textScore,
+        };
+      });
+    } catch (err) {
+      console.warn(
+        "[vectorStore] $text search unavailable, using regex fallback:",
+        err instanceof Error ? err.message : err
+      );
+
+      return this.searchKeywordFallback(query, limit);
+    }
+  }
+
+  private async searchKeywordFallback(
+    query: KeywordSearchQuery,
+    limit: number
+  ): Promise<KeywordSearchResult[]> {
+    const terms = query.query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length >= 2);
+
+    if (terms.length === 0) return [];
+
+    const filter: Record<string, unknown> = {
+      userId: new mongoose.Types.ObjectId(query.userId),
+      $or: terms.flatMap((term) => [
+        { topic: { $regex: term, $options: "i" } },
+        { subtopic: { $regex: term, $options: "i" } },
+        { title: { $regex: term, $options: "i" } },
+        { keywords: term },
+        { tags: term },
+        { searchableText: { $regex: term, $options: "i" } },
+      ]),
+    };
+
+    if (query.documentIds && query.documentIds.length > 0) {
+      filter.documentId = {
+        $in: query.documentIds.map((id) => new mongoose.Types.ObjectId(id)),
+      };
+    }
+
+    const chunks = await ChunkModel.find(filter).limit(limit * 3).lean();
 
     const scored = chunks
-      .map((chunk) => ({
-        vectorId: chunk.vectorId,
-        score: cosineSimilarity(query.vector, chunk.embedding),
-        text: chunk.text,
-        metadata: chunk.metadata as unknown as VectorSearchResult["metadata"],
-      }))
-      .filter((item) => item.score >= minScore)
+      .map((chunk) => {
+        const haystack = [
+          chunk.topic,
+          chunk.subtopic,
+          chunk.title,
+          chunk.summary,
+          chunk.searchableText,
+          ...(chunk.keywords ?? []),
+          ...(chunk.tags ?? []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        let matches = 0;
+        for (const term of terms) {
+          if (haystack.includes(term)) matches += 1;
+        }
+
+        return { chunk, score: matches / terms.length };
+      })
+      .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
 
-    return scored;
+    return scored.map(({ chunk, score }) => ({
+      ...mapChunkToSearchResult({
+        ...(chunk as unknown as Record<string, unknown>),
+        score,
+      }),
+      score,
+    }));
   }
 }
 
-/** Pinecone placeholder — implement when switching providers */
-class PineconeVectorStore implements IVectorStore {
-  async storeVector(_payload: StoreVectorPayload): Promise<string> {
-    throw new Error("Pinecone vector store is not configured yet");
-  }
+export const vectorStore: IVectorStore = new PineconeVectorStore();
 
-  async deleteVector(_vectorId: string, _userId: string): Promise<void> {
-    throw new Error("Pinecone vector store is not configured yet");
-  }
-
-  async deleteVectorsByDocument(
-    _documentId: string,
-    _userId: string
-  ): Promise<void> {
-    throw new Error("Pinecone vector store is not configured yet");
-  }
-
-  async updateVector(
-    _vectorId: string,
-    _payload: StoreVectorPayload
-  ): Promise<void> {
-    throw new Error("Pinecone vector store is not configured yet");
-  }
-
-  async searchVector(_query: VectorSearchQuery): Promise<VectorSearchResult[]> {
-    throw new Error("Pinecone vector store is not configured yet");
-  }
-}
-
-function createVectorStore(): IVectorStore {
-  const provider = process.env.VECTOR_STORE_PROVIDER ?? "mongodb";
-
-  if (provider === "pinecone") {
-    return new PineconeVectorStore();
-  }
-
-  return new MongoVectorStore();
-}
-
-export const vectorStore = createVectorStore();
-
-export { MongoVectorStore, PineconeVectorStore, cosineSimilarity };
+export { PineconeVectorStore };

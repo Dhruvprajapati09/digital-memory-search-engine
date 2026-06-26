@@ -3,6 +3,7 @@ import DocumentModel, { DocumentType } from "../models/Document";
 import { AppError } from "../middleware/error.middleware";
 import { generateQueryEmbedding } from "./embeddingService";
 import { vectorStore } from "./vectorStoreService";
+import { fuseSearchResults } from "./search/hybridSearchService";
 import {
   rankDocumentGroups,
   generatePreviewSnippet,
@@ -23,7 +24,7 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 /** Fetch extra chunk hits before grouping so pagination has enough documents */
-const VECTOR_FETCH_MULTIPLIER = 5;
+const RETRIEVAL_MULTIPLIER = 8;
 
 function validateQuery(query: string): string {
   const trimmed = query.trim();
@@ -58,7 +59,7 @@ function parseLimit(value: unknown): number {
 }
 
 function parseDocumentType(value: unknown): DocumentType | undefined {
-  if (value === "pdf" || value === "image" || value === "note") {
+  if (value === "pdf" || value === "image" || value === "note" || value === "video") {
     return value;
   }
 
@@ -108,9 +109,6 @@ function resolveDateRange(filter: SearchFilter): {
   }
 }
 
-/**
- * Resolve document IDs that match type/date filters for the authenticated user.
- */
 async function getFilteredDocumentIds(
   userId: string,
   filter: SearchFilter
@@ -154,12 +152,14 @@ function buildSearchFilter(params: SearchRequest): SearchFilter {
     date: params.date as DateFilterPreset | undefined,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
+    topic: params.topic,
+    tag: params.tag,
   };
 }
 
 /**
- * Full search pipeline: embed query → vector search → rank → group → preview.
- * Designed for future RAG / hybrid search extensions (Milestone 8+).
+ * Hybrid search pipeline:
+ * vector retrieval + keyword retrieval → RRF fusion → topic/title/phrase rerank → group by document.
  */
 export async function searchDocuments(
   userId: string,
@@ -173,10 +173,8 @@ export async function searchDocuments(
 
   const filteredDocumentIds = await getFilteredDocumentIds(userId, filter);
 
-  // No documents match filters — return empty result set early
   if (filteredDocumentIds !== undefined && filteredDocumentIds.length === 0) {
     const searchTimeMs = Date.now() - startedAt;
-
     await saveSearchQuery(userId, query, 0, searchTimeMs);
 
     return {
@@ -191,32 +189,56 @@ export async function searchDocuments(
     };
   }
 
+  const retrievalLimit = Math.max(limit * page * RETRIEVAL_MULTIPLIER, 60);
+
   const embedding = await generateQueryEmbedding(query);
 
-  const vectorLimit = limit * page * VECTOR_FETCH_MULTIPLIER;
+  const [vectorHits, keywordHits] = await Promise.all([
+    vectorStore.searchVector({
+      vector: embedding.vector,
+      userId,
+      limit: retrievalLimit,
+      minScore: 0.08,
+      documentIds: filteredDocumentIds,
+      topic: filter.topic,
+      tags: filter.tag ? [filter.tag] : undefined,
+    }),
+    vectorStore.searchKeyword({
+      query,
+      userId,
+      limit: retrievalLimit,
+      documentIds: filteredDocumentIds,
+    }),
+  ]);
 
-  const vectorHits = await vectorStore.searchVector({
-    vector: embedding.vector,
-    userId,
-    limit: Math.max(vectorLimit, 50),
-    minScore: 0.1,
-    documentIds: filteredDocumentIds,
-  });
+  const fusedHits = fuseSearchResults(vectorHits, keywordHits);
 
   const uniqueDocIds = [
-    ...new Set(vectorHits.map((hit) => hit.metadata.documentId)),
+    ...new Set(
+      fusedHits.map((hit) => hit.metadata.documentId).filter(Boolean)
+    ),
   ];
 
   const documents = await DocumentModel.find({
     _id: { $in: uniqueDocIds },
     userId,
   })
-    .select("_id title type createdAt")
+    .select(
+      "_id title type createdAt videoChannel videoThumbnail videoUrl youtubeVideoId"
+    )
     .lean();
 
   const documentMeta = new Map<
     string,
-    { title: string; type: string; createdAt: Date }
+    {
+      title: string;
+      type: string;
+      createdAt: Date;
+      videoChannel?: string;
+      videoThumbnail?: string;
+      videoUrl?: string;
+      youtubeVideoId?: string;
+    }
   >();
 
   for (const doc of documents) {
@@ -224,16 +246,21 @@ export async function searchDocuments(
       title: doc.title,
       type: doc.type,
       createdAt: doc.createdAt,
+      videoChannel: doc.videoChannel,
+      videoThumbnail: doc.videoThumbnail,
+      videoUrl: doc.videoUrl,
+      youtubeVideoId: doc.youtubeVideoId,
     });
   }
 
-  const ranked = rankDocumentGroups(vectorHits, documentMeta, query);
+  const ranked = rankDocumentGroups(fusedHits, documentMeta, query);
   const totalResults = ranked.length;
   const totalPages = totalResults === 0 ? 0 : Math.ceil(totalResults / limit);
   const offset = (page - 1) * limit;
   const pageResults = ranked.slice(offset, offset + limit);
   const highlightTerms = tokenizeQuery(query);
 
+<<<<<<< HEAD
   const results: SearchResult[] = pageResults.map((item) => ({
     documentId: item.documentId,
     title: item.title,
@@ -241,12 +268,72 @@ export async function searchDocuments(
     score: Math.round(item.finalScore * 100) / 100,
     preview: generatePreviewSnippet(item.bestChunkText, query),
     highlightTerms,
-    matchedChunks: item.matchedChunks.map(({ chunkIndex, score }) => ({
-      chunkIndex,
-      score: Math.round(score * 100) / 100,
-    })),
+    matchedChunks: item.matchedChunks.map(
+      ({ chunkIndex, score, topic, subtopic, title, sectionPath }) => ({
+        chunkIndex,
+        score: Math.round(score * 100) / 100,
+        topic,
+        subtopic,
+        title,
+        sectionPath,
+      })
+    ),
     createdAt: item.createdAt.toISOString(),
+    topTopic: item.topTopic,
+    topSubtopic: item.topSubtopic,
   }));
+=======
+  const results: SearchResult[] = pageResults.map((item) => {
+    const docMeta = documentMeta.get(item.documentId);
+    const topChunk = item.matchedChunks[0];
+    const isVideo = item.type === "video";
+
+    return {
+      documentId: item.documentId,
+      title: item.title,
+      type: item.type,
+      score: Math.round(item.finalScore * 100) / 100,
+      preview: generatePreviewSnippet(item.bestChunkText, query),
+      highlightTerms,
+      matchedChunks: item.matchedChunks.map(
+        ({
+          chunkIndex,
+          score,
+          topic,
+          subtopic,
+          title,
+          sectionPath,
+          timestamp,
+          timestampSeconds,
+          videoUrl,
+        }) => ({
+          chunkIndex,
+          score: Math.round(score * 100) / 100,
+          topic,
+          subtopic,
+          title,
+          sectionPath,
+          timestamp,
+          timestampSeconds,
+          videoUrl,
+        })
+      ),
+      createdAt: item.createdAt.toISOString(),
+      topTopic: item.topTopic,
+      topSubtopic: item.topSubtopic,
+      ...(isVideo
+        ? {
+            channel: docMeta?.videoChannel,
+            thumbnail: docMeta?.videoThumbnail,
+            timestamp: topChunk?.timestamp,
+            timestampSeconds: topChunk?.timestampSeconds,
+            videoUrl: topChunk?.videoUrl ?? docMeta?.videoUrl,
+            youtubeVideoId: docMeta?.youtubeVideoId,
+          }
+        : {}),
+    };
+  });
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
   const searchTimeMs = Date.now() - startedAt;
 

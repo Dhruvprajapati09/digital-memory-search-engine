@@ -57,7 +57,12 @@ function TypeIcon({ type }: { type: DocumentType }) {
 }
 
 function DocumentCard({ document, onDelete }: DocumentCardProps) {
-  const imageUrl = document.type === 'image' ? getFileUrl(document) : null
+  const imageUrl =
+    document.type === 'image'
+      ? getFileUrl(document)
+      : document.type === 'video' && document.videoThumbnail
+        ? document.videoThumbnail
+        : null
   const previewText = getPreviewText(document)
   const indexStatus = (document.indexStatus ?? 'pending') as IndexStatus
 
@@ -85,8 +90,13 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
               {document.title}
             </Link>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <p className="text-sm text-text-muted capitalize">{document.type}</p>
-              {document.type !== 'note' && (
+              <p className="text-sm text-text-muted capitalize">
+                {document.type}
+                {document.type === 'video' && document.videoChannel
+                  ? ` · ${document.videoChannel}`
+                  : ''}
+              </p>
+              {document.type !== 'note' && document.type !== 'video' && (
                 <Badge
                   variant={
                     (document.extractionStatus ?? 'pending') === 'completed'

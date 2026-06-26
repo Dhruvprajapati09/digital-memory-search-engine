@@ -7,6 +7,8 @@ export interface SearchFilter {
   date?: DateFilterPreset;
   dateFrom?: string;
   dateTo?: string;
+  topic?: string;
+  tag?: string;
 }
 
 export interface SearchRequest {
@@ -17,12 +19,25 @@ export interface SearchRequest {
   date?: DateFilterPreset;
   dateFrom?: string;
   dateTo?: string;
+  topic?: string;
+  tag?: string;
 }
 
 export interface MatchedChunk {
   chunkIndex: number;
   score: number;
   text?: string;
+  topic?: string;
+  subtopic?: string;
+  title?: string;
+  sectionPath?: string[];
+<<<<<<< HEAD
+=======
+  /** Video transcript timestamp (formatted MM:SS) */
+  timestamp?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 }
 
 export interface SearchResult {
@@ -34,6 +49,18 @@ export interface SearchResult {
   highlightTerms: string[];
   matchedChunks: MatchedChunk[];
   createdAt: string;
+  topTopic?: string;
+  topSubtopic?: string;
+<<<<<<< HEAD
+=======
+  /** Video-specific fields */
+  channel?: string;
+  thumbnail?: string;
+  timestamp?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+  youtubeVideoId?: string;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 }
 
 export interface SearchResponse {
@@ -62,6 +89,32 @@ export interface SearchStats {
   totalIndexed: number;
 }
 
+export interface RankedChunkHit {
+  vectorId: string;
+  chunkIndex: number;
+  text: string;
+  topic?: string;
+  subtopic?: string;
+  title?: string;
+  sectionPath?: string[];
+  contentPreview: string;
+  vectorScore: number;
+  keywordScore: number;
+  topicScore: number;
+  titleScore: number;
+  phraseScore: number;
+  rrfScore: number;
+  finalScore: number;
+<<<<<<< HEAD
+=======
+  timestampFormatted?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+  youtubeVideoId?: string;
+  channel?: string;
+>>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+}
+
 export interface RankedDocumentGroup {
   documentId: string;
   title: string;
@@ -70,7 +123,10 @@ export interface RankedDocumentGroup {
   matchedChunks: MatchedChunk[];
   vectorScore: number;
   keywordScore: number;
+  topicScore?: number;
   chunkCount: number;
   finalScore: number;
   bestChunkText: string;
+  topTopic?: string;
+  topSubtopic?: string;
 }
