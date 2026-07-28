@@ -2,9 +2,10 @@ import type {
   VectorSearchResult,
   KeywordSearchResult,
 } from "../../types/embedding";
+import { env } from "../../config/env";
 
 /** Reciprocal Rank Fusion — standard hybrid retrieval fusion (used by Perplexity-style systems) */
-const RRF_K = 60;
+const DEFAULT_RRF_K = 60;
 
 export interface FusedSearchHit {
   vectorId: string;
@@ -13,6 +14,15 @@ export interface FusedSearchHit {
   vectorScore: number;
   keywordScore: number;
   rrfScore: number;
+  graphScore?: number;
+  graphConfidence?: number;
+  graphMatchedNodes?: Array<{
+    nodeId: string;
+    type: string;
+    label: string;
+    score: number;
+    depth: number;
+  }>;
   topic?: string;
   subtopic?: string;
   title?: string;
@@ -48,14 +58,19 @@ function normalizeHit(
 export function fuseSearchResults(
   vectorHits: VectorSearchResult[],
   keywordHits: KeywordSearchResult[],
-  options?: { weightVector?: number; weightKeyword?: number }
+  options?: {
+    weightVector?: number;
+    weightKeyword?: number;
+    rrfK?: number;
+  }
 ): FusedSearchHit[] {
-  const weightVector = options?.weightVector ?? 0.6;
-  const weightKeyword = options?.weightKeyword ?? 0.4;
+  const weightVector = options?.weightVector ?? env.RRF_WEIGHT_VECTOR;
+  const weightKeyword = options?.weightKeyword ?? env.RRF_WEIGHT_KEYWORD;
+  const rrfK = options?.rrfK ?? env.RRF_K ?? DEFAULT_RRF_K;
   const fused = new Map<string, FusedSearchHit>();
 
   vectorHits.forEach((hit, rank) => {
-    const rrf = weightVector / (RRF_K + rank + 1);
+    const rrf = weightVector / (rrfK + rank + 1);
     const base = normalizeHit(hit);
 
     fused.set(hit.vectorId, {
@@ -67,7 +82,7 @@ export function fuseSearchResults(
   });
 
   keywordHits.forEach((hit, rank) => {
-    const rrf = weightKeyword / (RRF_K + rank + 1);
+    const rrf = weightKeyword / (rrfK + rank + 1);
     const existing = fused.get(hit.vectorId);
 
     if (existing) {
@@ -87,4 +102,4 @@ export function fuseSearchResults(
   return [...fused.values()].sort((a, b) => b.rrfScore - a.rrfScore);
 }
 
-export { RRF_K };
+export { DEFAULT_RRF_K as RRF_K };

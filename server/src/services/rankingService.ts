@@ -1,18 +1,27 @@
-import type { VectorSearchResult } from "../types/embedding";
+import type { VectorSearchResult, VectorMetadata } from "../types/embedding";
 import type { RankedDocumentGroup, RankedChunkHit } from "../types/search";
 import type { FusedSearchHit } from "./search/hybridSearchService";
 
 /** Weights for composite chunk-level ranking */
 const WEIGHTS = {
-  rrf: 0.45,
-  vector: 0.2,
+  rrf: 0.4,
+  vector: 0.18,
   keyword: 0.15,
-  topic: 0.1,
-  title: 0.05,
+  topic: 0.08,
+  title: 0.04,
+  documentTitle: 0.05,
+  metadata: 0.05,
   phrase: 0.05,
+  graph: 0.1,
 } as const;
 
 const MAX_CHUNK_BONUS = 5;
+
+export interface DocumentMetaForRanking {
+  title: string;
+  type: string;
+  createdAt: Date;
+}
 
 export function tokenizeQuery(query: string): string[] {
   return query
@@ -54,6 +63,38 @@ export function computeKeywordScore(text: string, queryTerms: string[]): number 
   return matches / queryTerms.length;
 }
 
+export function extractMatchedKeywords(
+  hit: FusedSearchHit,
+  documentTitle: string | undefined,
+  queryTerms: string[]
+): string[] {
+  if (queryTerms.length === 0) return [];
+
+  const matched = new Set<string>();
+
+  const fields = [
+    hit.text,
+    hit.title,
+    hit.topic,
+    hit.subtopic,
+    hit.summary,
+    documentTitle,
+    ...(hit.keywords ?? []),
+    ...(hit.tags ?? []),
+    ...(hit.sectionPath ?? []),
+  ].filter(Boolean);
+
+  const haystack = fields.join(" ").toLowerCase();
+
+  for (const term of queryTerms) {
+    if (haystack.includes(term)) {
+      matched.add(term);
+    }
+  }
+
+  return [...matched];
+}
+
 export function computeTopicScore(
   hit: FusedSearchHit,
   queryTerms: string[]
@@ -80,6 +121,32 @@ export function computeTitleScore(
 ): number {
   if (!hit.title || queryTerms.length === 0) return 0;
   return computeKeywordScore(hit.title, queryTerms);
+}
+
+export function computeDocumentTitleScore(
+  documentTitle: string | undefined,
+  queryTerms: string[]
+): number {
+  if (!documentTitle || queryTerms.length === 0) return 0;
+  return computeKeywordScore(documentTitle, queryTerms);
+}
+
+export function computeMetadataScore(
+  hit: FusedSearchHit,
+  queryTerms: string[]
+): number {
+  if (queryTerms.length === 0) return 0;
+
+  const metadataText = [
+    ...(hit.tags ?? []),
+    ...(hit.keywords ?? []),
+    hit.summary,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return computeKeywordScore(metadataText, queryTerms);
 }
 
 export function computePhraseBoost(
@@ -113,11 +180,36 @@ export function computeRecencyScore(createdAt: Date, now = new Date()): number {
   return Math.max(0, 1 - ageDays / 90);
 }
 
+/** Normalize raw final scores to 0–1 confidence within a result set */
+export function normalizeConfidenceScores(
+  chunks: RankedChunkHit[]
+): RankedChunkHit[] {
+  if (chunks.length === 0) return chunks;
+
+  const max = Math.max(...chunks.map((c) => c.finalScore));
+  const min = Math.min(...chunks.map((c) => c.finalScore));
+  const range = max - min;
+
+  if (range === 0) {
+    return chunks.map((c) => ({ ...c, confidenceScore: 1 }));
+  }
+
+  return chunks.map((c) => ({
+    ...c,
+    confidenceScore: Math.round(((c.finalScore - min) / range) * 1000) / 1000,
+  }));
+}
+
 function scoreChunkHit(
   hit: FusedSearchHit,
-  query: string
+  query: string,
+  documentMeta: Map<string, DocumentMetaForRanking>,
+  rankingQuery?: string
 ): RankedChunkHit {
-  const queryTerms = tokenizeQuery(query);
+  const documentId = hit.metadata.documentId;
+  const docMeta = documentMeta.get(documentId);
+  const effectiveQuery = rankingQuery ?? query;
+  const queryTerms = tokenizeQuery(effectiveQuery);
   const phrases = extractPhrases(query);
   const searchable = [
     hit.text,
@@ -132,7 +224,17 @@ function scoreChunkHit(
   const keywordScore = computeKeywordScore(searchable, queryTerms);
   const topicScore = computeTopicScore(hit, queryTerms);
   const titleScore = computeTitleScore(hit, queryTerms);
+  const documentTitleScore = computeDocumentTitleScore(
+    docMeta?.title ?? (hit.metadata.documentTitle as string | undefined),
+    queryTerms
+  );
+  const metadataScore = computeMetadataScore(hit, queryTerms);
   const phraseScore = computePhraseBoost(hit, phrases);
+  const matchedKeywords = extractMatchedKeywords(
+    hit,
+    docMeta?.title,
+    queryTerms
+  );
 
   const finalScore =
     hit.rrfScore * WEIGHTS.rrf +
@@ -140,33 +242,78 @@ function scoreChunkHit(
     keywordScore * WEIGHTS.keyword +
     topicScore * WEIGHTS.topic +
     titleScore * WEIGHTS.title +
-    phraseScore * WEIGHTS.phrase;
+    documentTitleScore * WEIGHTS.documentTitle +
+    metadataScore * WEIGHTS.metadata +
+    phraseScore * WEIGHTS.phrase +
+    (hit.graphScore ?? 0) * WEIGHTS.graph;
+
+  const documentTitle =
+    docMeta?.title ?? (hit.metadata.documentTitle as string | undefined);
+
+  const metadata: VectorMetadata = {
+    ...hit.metadata,
+    documentId,
+    documentTitle,
+    topic: hit.topic ?? hit.metadata.topic,
+    subtopic: hit.subtopic,
+    title: hit.title,
+    summary: hit.summary,
+    keywords: hit.keywords,
+    tags: hit.tags,
+    sectionPath: hit.sectionPath,
+    contentPreview: hit.contentPreview,
+  };
 
   return {
     vectorId: hit.vectorId,
+    documentId,
     chunkIndex: hit.metadata.chunkIndex,
     text: hit.text,
     topic: hit.topic,
     subtopic: hit.subtopic,
     title: hit.title,
+    summary: hit.summary,
+    keywords: hit.keywords,
+    tags: hit.tags,
     sectionPath: hit.sectionPath,
     contentPreview: hit.contentPreview ?? hit.text.slice(0, 200),
+    metadata,
     vectorScore: hit.vectorScore,
     keywordScore,
     topicScore,
     titleScore,
+    documentTitleScore,
+    metadataScore,
     phraseScore,
     rrfScore: hit.rrfScore,
     finalScore,
-<<<<<<< HEAD
-=======
+    confidenceScore: 0,
+    graphScore: hit.graphScore,
+    graphConfidence: hit.graphConfidence,
+    graphMatchedNodes: hit.graphMatchedNodes,
+    matchedKeywords,
     timestampFormatted: hit.metadata.timestampFormatted as string | undefined,
     timestampSeconds: hit.metadata.timestampSeconds as number | undefined,
     videoUrl: hit.metadata.videoUrl as string | undefined,
     youtubeVideoId: hit.metadata.youtubeVideoId as string | undefined,
     channel: hit.metadata.channel as string | undefined,
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   };
+}
+
+/**
+ * Rank fused chunk hits by composite score (shared by search and RAG).
+ */
+export function rankRankedChunks(
+  fusedHits: FusedSearchHit[],
+  documentMeta: Map<string, DocumentMetaForRanking>,
+  query: string,
+  rankingQuery?: string
+): RankedChunkHit[] {
+  const scored = fusedHits
+    .map((hit) => scoreChunkHit(hit, query, documentMeta, rankingQuery))
+    .sort((a, b) => b.finalScore - a.finalScore);
+
+  return normalizeConfidenceScores(scored);
 }
 
 /**
@@ -174,16 +321,26 @@ function scoreChunkHit(
  */
 export function rankDocumentGroups(
   fusedHits: FusedSearchHit[],
-  documentMeta: Map<
-    string,
-    { title: string; type: string; createdAt: Date }
-  >,
-  query: string
+  documentMeta: Map<string, DocumentMetaForRanking>,
+  query: string,
+  rankingQuery?: string
 ): RankedDocumentGroup[] {
-  const scoredChunks = fusedHits
-    .map((hit) => scoreChunkHit(hit, query))
-    .sort((a, b) => b.finalScore - a.finalScore);
+  const scoredChunks = rankRankedChunks(
+    fusedHits,
+    documentMeta,
+    query,
+    rankingQuery
+  );
+  return groupRankedChunksIntoDocuments(scoredChunks, documentMeta);
+}
 
+/**
+ * Group already-ranked chunks by document (for search UI after RetrievalCore).
+ */
+export function groupRankedChunksIntoDocuments(
+  scoredChunks: RankedChunkHit[],
+  documentMeta: Map<string, DocumentMetaForRanking>
+): RankedDocumentGroup[] {
   const grouped = new Map<
     string,
     {
@@ -196,21 +353,15 @@ export function rankDocumentGroups(
   >();
 
   for (const chunk of scoredChunks) {
-    const documentId = fusedHits.find(
-      (h) => h.vectorId === chunk.vectorId
-    )?.metadata.documentId;
-
-    if (!documentId) continue;
-
-    const meta = documentMeta.get(documentId);
+    const meta = documentMeta.get(chunk.documentId);
     if (!meta) continue;
 
-    const existing = grouped.get(documentId);
+    const existing = grouped.get(chunk.documentId);
     if (existing) {
       existing.chunks.push(chunk);
     } else {
-      grouped.set(documentId, {
-        documentId,
+      grouped.set(chunk.documentId, {
+        documentId: chunk.documentId,
         title: meta.title,
         type: meta.type,
         createdAt: meta.createdAt,
@@ -240,18 +391,16 @@ export function rankDocumentGroups(
         subtopic: c.subtopic,
         title: c.title,
         sectionPath: c.sectionPath,
-<<<<<<< HEAD
-=======
         timestamp: c.timestampFormatted,
         timestampSeconds: c.timestampSeconds,
         videoUrl: c.videoUrl,
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
       })),
       vectorScore: top?.vectorScore ?? 0,
       keywordScore: top?.keywordScore ?? 0,
       topicScore: top?.topicScore ?? 0,
       chunkCount: group.chunks.length,
-      finalScore: (top?.finalScore ?? 0) + chunkBonus * 0.02 + recencyScore * 0.02,
+      finalScore:
+        (top?.finalScore ?? 0) + chunkBonus * 0.02 + recencyScore * 0.02,
       bestChunkText: top?.contentPreview ?? top?.text ?? "",
       topTopic: top?.topic,
       topSubtopic: top?.subtopic,
@@ -306,10 +455,7 @@ export function generatePreviewSnippet(
 /** @deprecated Use rankDocumentGroups with fused hits — kept for tests */
 export function rankLegacyVectorGroups(
   matches: VectorSearchResult[],
-  documentMeta: Map<
-    string,
-    { title: string; type: string; createdAt: Date }
-  >,
+  documentMeta: Map<string, DocumentMetaForRanking>,
   query: string
 ): RankedDocumentGroup[] {
   const fused = matches.map((m) => ({

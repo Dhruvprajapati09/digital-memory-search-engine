@@ -1,3 +1,5 @@
+import type { ExtractedEntity, ExtractedRelationship } from "./documentIntelligence";
+
 export type IndexStatus = "pending" | "processing" | "indexed" | "failed";
 
 export interface TextChunkInput {
@@ -28,6 +30,22 @@ export interface VectorMetadata {
   level?: string;
   parentChunkIndex?: number;
   parentChunkId?: string;
+  /** Phase 5 structural metadata */
+  chapter?: string;
+  section?: string;
+  heading?: string;
+  parentHeading?: string;
+  pageNumber?: number;
+  pageRange?: { start: number; end: number };
+  pageOffset?: number;
+  sourcePage?: number;
+  entities?: ExtractedEntity[];
+  relationships?: ExtractedRelationship[];
+  language?: string;
+  embeddingVersion?: string;
+  embeddingDate?: string;
+  chunkHash?: string;
+  indexVersion?: number;
   [key: string]: unknown;
 }
 
@@ -46,16 +64,28 @@ export interface StoreVectorPayload {
   keywords: string[];
   concepts: string[];
   tags: string[];
-<<<<<<< HEAD
-  sourceType: "pdf" | "image" | "note";
-=======
   sourceType: "pdf" | "image" | "note" | "video";
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   sectionPath: string[];
   contentPreview: string;
   level: "document" | "topic" | "subtopic" | "semantic";
   parentChunkIndex?: number;
   parentChunkId?: string;
+  /** Phase 5 fields */
+  chapter?: string;
+  section?: string;
+  heading?: string;
+  parentHeading?: string;
+  pageNumber?: number;
+  pageRange?: { start: number; end: number };
+  pageOffset?: number;
+  sourcePage?: number;
+  entities?: ExtractedEntity[];
+  relationships?: ExtractedRelationship[];
+  language?: string;
+  embeddingVersion?: string;
+  embeddingDate?: Date;
+  chunkHash?: string;
+  indexVersion?: number;
 }
 
 export interface VectorSearchQuery {

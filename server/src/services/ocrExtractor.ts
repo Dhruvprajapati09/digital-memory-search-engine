@@ -10,9 +10,22 @@ const SUPPORTED_EXTENSIONS = new Set([
   ".webp",
 ]);
 
+/** In-memory OCR cache keyed by file path + mtime */
+const ocrCache = new Map<string, { text: string; cachedAt: number }>();
+const OCR_CACHE_TTL_MS = 60 * 60 * 1000;
+
+async function getCacheKey(filePath: string): Promise<string | null> {
+  try {
+    const stat = await fs.stat(filePath);
+    return `${filePath}:${stat.mtimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Extract text from images using Tesseract.js OCR.
- * Supports PNG, JPG, JPEG, and WEBP.
+ * Supports PNG, JPG, JPEG, and WEBP. Results are cached by file mtime.
  */
 export async function extractImageText(filePath: string): Promise<ExtractionResult> {
   try {
@@ -28,6 +41,14 @@ export async function extractImageText(filePath: string): Promise<ExtractionResu
       success: false,
       error: `Unsupported image format: ${ext || "unknown"}`,
     };
+  }
+
+  const cacheKey = await getCacheKey(filePath);
+  if (cacheKey) {
+    const cached = ocrCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < OCR_CACHE_TTL_MS) {
+      return { success: true, text: cached.text };
+    }
   }
 
   try {
@@ -46,6 +67,10 @@ export async function extractImageText(filePath: string): Promise<ExtractionResu
       };
     }
 
+    if (cacheKey) {
+      ocrCache.set(cacheKey, { text, cachedAt: Date.now() });
+    }
+
     return { success: true, text };
   } catch (err) {
     const message =
@@ -56,4 +81,9 @@ export async function extractImageText(filePath: string): Promise<ExtractionResu
       error: `OCR extraction failed: ${message}`,
     };
   }
+}
+
+/** Clear OCR cache (for testing) */
+export function clearOcrCache(): void {
+  ocrCache.clear();
 }

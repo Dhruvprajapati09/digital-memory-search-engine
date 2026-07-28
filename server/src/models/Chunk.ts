@@ -1,5 +1,10 @@
 import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
 import type { ChunkLevel } from "../types/chunking";
+import type {
+  ExtractedEntity,
+  ExtractedRelationship,
+  PageRange,
+} from "../types/documentIntelligence";
 
 export interface IChunk extends MongooseDocument {
   documentId: mongoose.Types.ObjectId;
@@ -18,16 +23,28 @@ export interface IChunk extends MongooseDocument {
   keywords: string[];
   concepts: string[];
   tags: string[];
-<<<<<<< HEAD
-  sourceType: "pdf" | "image" | "note";
-=======
   sourceType: "pdf" | "image" | "note" | "video";
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
   sectionPath: string[];
   contentPreview: string;
   level: ChunkLevel;
   parentChunkId?: mongoose.Types.ObjectId;
   parentChunkIndex?: number;
+  /** Phase 5 structural metadata */
+  chapter?: string;
+  section?: string;
+  heading?: string;
+  parentHeading?: string;
+  pageNumber?: number;
+  pageRange?: PageRange;
+  pageOffset?: number;
+  sourcePage?: number;
+  entities?: ExtractedEntity[];
+  relationships?: ExtractedRelationship[];
+  language?: string;
+  embeddingVersion?: string;
+  embeddingDate?: Date;
+  chunkHash?: string;
+  indexVersion?: number;
   /** Combined text for MongoDB $text search */
   searchableText: string;
   metadata: Record<string, unknown>;
@@ -103,11 +120,7 @@ const chunkSchema = new Schema<IChunk>(
     },
     sourceType: {
       type: String,
-<<<<<<< HEAD
-      enum: ["pdf", "image", "note"],
-=======
       enum: ["pdf", "image", "note", "video"],
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
       required: true,
     },
     sectionPath: {
@@ -129,6 +142,83 @@ const chunkSchema = new Schema<IChunk>(
     },
     parentChunkIndex: {
       type: Number,
+    },
+    chapter: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    section: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    heading: {
+      type: String,
+      trim: true,
+    },
+    parentHeading: {
+      type: String,
+      trim: true,
+    },
+    pageNumber: {
+      type: Number,
+      min: 0,
+      index: true,
+    },
+    pageRange: {
+      start: { type: Number, min: 0 },
+      end: { type: Number, min: 0 },
+    },
+    pageOffset: {
+      type: Number,
+      min: 0,
+    },
+    sourcePage: {
+      type: Number,
+      min: 0,
+    },
+    entities: {
+      type: [
+        {
+          name: { type: String, required: true },
+          type: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
+    relationships: {
+      type: [
+        {
+          source: { type: String, required: true },
+          target: { type: String, required: true },
+          type: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
+    language: {
+      type: String,
+      trim: true,
+      default: "en",
+      index: true,
+    },
+    embeddingVersion: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    embeddingDate: {
+      type: Date,
+    },
+    chunkHash: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    indexVersion: {
+      type: Number,
+      default: 1,
     },
     searchableText: {
       type: String,
@@ -158,6 +248,11 @@ chunkSchema.index({ userId: 1, documentId: 1 });
 chunkSchema.index({ userId: 1, topic: 1 });
 chunkSchema.index({ userId: 1, tags: 1 });
 chunkSchema.index({ userId: 1, keywords: 1 });
+chunkSchema.index({ documentId: 1, chunkHash: 1 });
+chunkSchema.index({ userId: 1, chapter: 1 });
+chunkSchema.index({ userId: 1, section: 1 });
+chunkSchema.index({ userId: 1, language: 1 });
+chunkSchema.index({ userId: 1, "entities.name": 1 });
 chunkSchema.index(
   {
     title: "text",
@@ -167,12 +262,18 @@ chunkSchema.index(
     searchableText: "text",
     keywords: "text",
     tags: "text",
+    heading: "text",
+    chapter: "text",
+    section: "text",
   },
   {
     weights: {
       title: 10,
+      heading: 9,
+      chapter: 8,
       topic: 8,
       subtopic: 6,
+      section: 6,
       keywords: 5,
       tags: 4,
       summary: 3,

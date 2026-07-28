@@ -163,7 +163,7 @@ export async function summarizeDocument(
     )
   );
 
-  const { text: context } = buildContext(retrieved);
+  const { text: context } = await buildContext(userId, retrieved);
 
   if (!context.trim()) {
     throw new AppError("Document content is empty", 400);

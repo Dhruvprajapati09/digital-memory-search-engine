@@ -3,18 +3,31 @@ import { calculateTokens } from "../../utils/tokenCounter";
 import { buildYoutubeWatchUrl } from "../../utils/timestamp";
 import type { AiChunkDetail, AiSource, BuiltContext } from "../../types/ai";
 import type { RetrievedChunk } from "../../types/chat";
+import { assembleContext } from "../context/contextAssembler";
 
 const CONTEXT_SEPARATOR = "\n\n---\n\n";
 
-/**
- * Extract optional page number from chunk metadata when available.
- */
 function resolvePageNumber(chunk: RetrievedChunk): number | undefined {
-  const raw = chunk.metadata.page ?? chunk.metadata.pageNumber;
+  const raw = chunk.metadata.pageNumber ?? chunk.metadata.page;
   if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
     return Math.floor(raw);
   }
   return undefined;
+}
+
+function resolveChapter(chunk: RetrievedChunk): string | undefined {
+  const chapter = chunk.metadata.chapter as string | undefined;
+  if (chapter) return chapter;
+  const path = chunk.sectionPath ?? [];
+  return path.length > 0 ? path[0] : undefined;
+}
+
+function resolveSection(chunk: RetrievedChunk): string | undefined {
+  const section = chunk.metadata.section as string | undefined;
+  if (section) return section;
+  const path = chunk.sectionPath ?? [];
+  if (path.length >= 2) return path[path.length - 1];
+  return chunk.title;
 }
 
 function isVideoChunk(chunk: RetrievedChunk): boolean {
@@ -55,9 +68,69 @@ function resolveVideoTimestamp(chunk: RetrievedChunk): {
   };
 }
 
+function resolveConfidenceScore(chunk: RetrievedChunk): number | undefined {
+  const raw =
+    chunk.metadata.confidenceScore ?? chunk.metadata.retrievalScore;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.round(raw * 100) / 100;
+  }
+  return Math.round(chunk.score * 100) / 100;
+}
+
+function resolveSourceType(chunk: RetrievedChunk): string {
+  if (isVideoChunk(chunk)) return "video";
+  return (chunk.metadata.sourceType as string) ?? chunk.metadata.type ?? "document";
+}
+
 /**
- * Remove duplicate chunks (same vectorId or same document+chunkIndex).
- * Keeps the highest-scoring instance.
+ * Format a single chunk into a context block with full metadata (Phase 3).
+ */
+export function formatChunkBlock(chunk: RetrievedChunk, index: number): string {
+  const isVideo = isVideoChunk(chunk);
+  const videoTs = isVideo ? resolveVideoTimestamp(chunk) : undefined;
+  const confidence = resolveConfidenceScore(chunk);
+
+  const header = [
+    `[Source ${index + 1}]`,
+    `Chunk ID: ${chunk.vectorId}`,
+    `Source Type: ${resolveSourceType(chunk)}`,
+    chunk.metadata.documentTitle
+      ? `${isVideo ? "Video" : "Document"}: ${chunk.metadata.documentTitle}`
+      : null,
+    isVideo && chunk.metadata.channel
+      ? `Channel: ${chunk.metadata.channel}`
+      : null,
+    resolveChapter(chunk) ? `Chapter: ${resolveChapter(chunk)}` : null,
+    resolveSection(chunk) ? `Section: ${resolveSection(chunk)}` : null,
+    chunk.title && chunk.title !== resolveSection(chunk)
+      ? `Heading: ${chunk.title}`
+      : null,
+    chunk.topic ? `Topic: ${chunk.topic}` : null,
+    chunk.subtopic ? `Subtopic: ${chunk.subtopic}` : null,
+    !isVideo && resolvePageNumber(chunk) !== undefined
+      ? `Page: ${resolvePageNumber(chunk)}`
+      : null,
+    isVideo && videoTs?.formatted
+      ? `Timestamp: ${videoTs.formatted}`
+      : null,
+    `Score: ${Math.round(chunk.score * 100) / 100}`,
+    confidence !== undefined ? `Confidence: ${confidence}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return `${header}\n${chunk.text}`;
+}
+
+/** Format assembled chunks into LLM context text */
+export function formatContextText(chunks: RetrievedChunk[]): string {
+  return chunks
+    .map((chunk, index) => formatChunkBlock(chunk, index))
+    .join(CONTEXT_SEPARATOR);
+}
+
+/**
+ * @deprecated Use deduplicate from duplicateDetectionService — kept for compatibility
  */
 export function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
   const byKey = new Map<string, RetrievedChunk>();
@@ -74,18 +147,14 @@ export function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
   return Array.from(byKey.values());
 }
 
-/**
- * Sort chunks by relevance (similarity score descending).
- */
+/** @deprecated Context ordering handled by contextAssembler */
 export function sortChunksByRelevance(
   chunks: RetrievedChunk[]
 ): RetrievedChunk[] {
   return [...chunks].sort((a, b) => b.score - a.score);
 }
 
-/**
- * Limit chunks to fit within the configured context token budget.
- */
+/** @deprecated Token budget handled by contextAssembler */
 export function limitChunksByTokenBudget(
   chunks: RetrievedChunk[],
   maxTokens: number = env.MAX_CONTEXT_TOKENS
@@ -112,52 +181,18 @@ export function limitChunksByTokenBudget(
 }
 
 /**
- * Format a single chunk into a context block with preserved metadata.
+ * Build a token-bounded, logically ordered context window (Phase 3 pipeline).
  */
-function formatChunkBlock(chunk: RetrievedChunk, index: number): string {
-  const isVideo = isVideoChunk(chunk);
-  const videoTs = isVideo ? resolveVideoTimestamp(chunk) : undefined;
-
-  const header = [
-    `[Source ${index + 1}]`,
-    isVideo ? "Type: Video" : null,
-    chunk.metadata.documentTitle
-      ? `${isVideo ? "Video" : "Document"}: ${chunk.metadata.documentTitle}`
-      : null,
-    isVideo && chunk.metadata.channel
-      ? `Channel: ${chunk.metadata.channel}`
-      : null,
-    chunk.title ? `Section: ${chunk.title}` : null,
-    chunk.topic ? `Topic: ${chunk.topic}` : null,
-    chunk.subtopic ? `Subtopic: ${chunk.subtopic}` : null,
-    !isVideo && resolvePageNumber(chunk) !== undefined
-      ? `Page: ${resolvePageNumber(chunk)}`
-      : null,
-    isVideo && videoTs?.formatted
-      ? `Timestamp: ${videoTs.formatted}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" | ");
-
-  return `${header}\n${chunk.text}`;
-}
-
-/**
- * Build a token-bounded context window from retrieved chunks.
- */
-export function buildContext(chunks: RetrievedChunk[]): BuiltContext {
-  const processed = limitChunksByTokenBudget(
-    sortChunksByRelevance(deduplicateChunks(chunks))
-  );
-
-  const text = processed
-    .map((chunk, index) => formatChunkBlock(chunk, index))
-    .join(CONTEXT_SEPARATOR);
+export async function buildContext(
+  userId: string,
+  chunks: RetrievedChunk[]
+): Promise<BuiltContext> {
+  const assembled = await assembleContext(userId, chunks);
+  const text = formatContextText(assembled.chunks);
 
   return {
     text,
-    chunks: processed,
+    chunks: assembled.chunks,
     estimatedTokens: calculateTokens(text),
   };
 }
