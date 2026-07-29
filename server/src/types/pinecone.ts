@@ -17,6 +17,12 @@ export interface PineconeChunkMetadata extends RecordMetadata {
   title: string;
   sourceType: string;
   tags: string[];
+  /** Phase 5 filter metadata — always set with defaults for Pinecone compatibility */
+  pageNumber: number;
+  chapter: string;
+  section: string;
+  language: string;
+  embeddingVersion: string;
 }
 
 export interface PineconeUpsertRecord {

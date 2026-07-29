@@ -44,9 +44,92 @@ export const env = {
 
   /** RAG retrieval defaults */
   RAG_TOP_K: parseInt(process.env.RAG_TOP_K || "8", 10),
-  RAG_MIN_SCORE: parseFloat(process.env.RAG_MIN_SCORE || "0.15"),
-<<<<<<< HEAD
-=======
+  RAG_MIN_SCORE: parseFloat(process.env.RAG_MIN_SCORE || "0.08"),
+
+  /** Unified retrieval pipeline (search + RAG) */
+  RETRIEVAL_TOP_K: parseInt(process.env.RETRIEVAL_TOP_K || "60", 10),
+  SEARCH_TOP_K: parseInt(process.env.SEARCH_TOP_K || "20", 10),
+  MIN_VECTOR_SCORE: parseFloat(process.env.MIN_VECTOR_SCORE || "0.08"),
+  RRF_K: parseInt(process.env.RRF_K || "60", 10),
+  RRF_WEIGHT_VECTOR: parseFloat(process.env.RRF_WEIGHT_VECTOR || "0.6"),
+  RRF_WEIGHT_KEYWORD: parseFloat(process.env.RRF_WEIGHT_KEYWORD || "0.4"),
+  /** Fetch extra candidates before grouping documents for pagination */
+  RETRIEVAL_MULTIPLIER: parseInt(process.env.RETRIEVAL_MULTIPLIER || "8", 10),
+
+  /** Query intelligence (Phase 2) */
+  QUERY_EXPANSION_LIMIT: parseInt(process.env.QUERY_EXPANSION_LIMIT || "20", 10),
+  ENABLE_QUERY_EXPANSION: process.env.ENABLE_QUERY_EXPANSION !== "false",
+  ENABLE_ENTITY_EXTRACTION: process.env.ENABLE_ENTITY_EXTRACTION !== "false",
+  ENABLE_METADATA_HINTS: process.env.ENABLE_METADATA_HINTS !== "false",
+
+  /** Context assembly (Phase 3) */
+  ENABLE_CONTEXT_EXPANSION: process.env.ENABLE_CONTEXT_EXPANSION !== "false",
+  CONTEXT_NEIGHBOR_COUNT: parseInt(process.env.CONTEXT_NEIGHBOR_COUNT || "1", 10),
+  MAX_CONTEXT_CHUNKS: parseInt(process.env.MAX_CONTEXT_CHUNKS || "15", 10),
+  ENABLE_DUPLICATE_REMOVAL: process.env.ENABLE_DUPLICATE_REMOVAL !== "false",
+
+  /** Cross-encoder reranking (Phase 4) */
+  ENABLE_RERANKER: process.env.ENABLE_RERANKER !== "false",
+  RERANK_PROVIDER: process.env.RERANK_PROVIDER || "bge",
+  RERANK_TOP_K: parseInt(process.env.RERANK_TOP_K || "15", 10),
+  RETRIEVAL_CANDIDATES: parseInt(process.env.RETRIEVAL_CANDIDATES || "100", 10),
+  /** Knowledge graph retrieval (Phase 5) */
+  ENABLE_GRAPH_RETRIEVAL: process.env.ENABLE_GRAPH_RETRIEVAL !== "false",
+  GRAPH_RETRIEVAL_MAX_DEPTH: parseInt(
+    process.env.GRAPH_RETRIEVAL_MAX_DEPTH || "2",
+    10
+  ),
+  GRAPH_RETRIEVAL_CANDIDATES: parseInt(
+    process.env.GRAPH_RETRIEVAL_CANDIDATES || "60",
+    10
+  ),
+  GRAPH_RETRIEVAL_CACHE_TTL_MS: parseInt(
+    process.env.GRAPH_RETRIEVAL_CACHE_TTL_MS || "300000",
+    10
+  ),
+  GRAPH_RRF_WEIGHT: parseFloat(process.env.GRAPH_RRF_WEIGHT || "0.25"),
+  /** Search v2 cache/analytics infrastructure */
+  REDIS_URL: process.env.REDIS_URL || "",
+  ENABLE_SEARCH_CACHE: process.env.ENABLE_SEARCH_CACHE !== "false",
+  SEARCH_RESULT_CACHE_TTL_MS: parseInt(
+    process.env.SEARCH_RESULT_CACHE_TTL_MS || "120000",
+    10
+  ),
+  SEARCH_SUGGESTION_CACHE_TTL_MS: parseInt(
+    process.env.SEARCH_SUGGESTION_CACHE_TTL_MS || "300000",
+    10
+  ),
+  RERANK_TIMEOUT_MS: parseInt(process.env.RERANK_TIMEOUT_MS || "10000", 10),
+  RERANK_BATCH_SIZE: parseInt(process.env.RERANK_BATCH_SIZE || "32", 10),
+  /** Retries after transient provider failures (timeouts are not retried) */
+  RERANK_MAX_RETRIES: parseInt(process.env.RERANK_MAX_RETRIES || "2", 10),
+  FINAL_SCORE_WEIGHT_RERANK: parseFloat(
+    process.env.FINAL_SCORE_WEIGHT_RERANK || "0.70"
+  ),
+  FINAL_SCORE_WEIGHT_HYBRID: parseFloat(
+    process.env.FINAL_SCORE_WEIGHT_HYBRID || "0.15"
+  ),
+  FINAL_SCORE_WEIGHT_KEYWORD: parseFloat(
+    process.env.FINAL_SCORE_WEIGHT_KEYWORD || "0.05"
+  ),
+  FINAL_SCORE_WEIGHT_METADATA: parseFloat(
+    process.env.FINAL_SCORE_WEIGHT_METADATA || "0.05"
+  ),
+  FINAL_SCORE_WEIGHT_RECENCY: parseFloat(
+    process.env.FINAL_SCORE_WEIGHT_RECENCY || "0.05"
+  ),
+  ENABLE_SEARCH_DEBUG: process.env.ENABLE_SEARCH_DEBUG === "true",
+  /** Hugging Face Inference API — BAAI/bge-reranker-v2-m3 */
+  HUGGINGFACE_API_KEY: process.env.HUGGINGFACE_API_KEY || "",
+  BGE_RERANK_MODEL:
+    process.env.BGE_RERANK_MODEL || "BAAI/bge-reranker-v2-m3",
+  /** Jina AI Reranker API */
+  JINA_API_KEY: process.env.JINA_API_KEY || "",
+  JINA_RERANK_MODEL:
+    process.env.JINA_RERANK_MODEL || "jina-reranker-v2-base-multilingual",
+  /** Cohere Rerank API */
+  COHERE_API_KEY: process.env.COHERE_API_KEY || "",
+  COHERE_RERANK_MODEL: process.env.COHERE_RERANK_MODEL || "rerank-v3.5",
 
   /** AI answer generation — context and output limits */
   MAX_CONTEXT_TOKENS: parseInt(process.env.MAX_CONTEXT_TOKENS || "4000", 10),
@@ -70,15 +153,26 @@ export const env = {
 
   /** YouTube video import (Milestone 9) */
   YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || "",
-  ENABLE_YOUTUBE_IMPORT:
-    process.env.ENABLE_YOUTUBE_IMPORT !== "false",
-  MAX_TRANSCRIPT_SIZE: parseInt(
-    process.env.MAX_TRANSCRIPT_SIZE || "500000",
-    10
-  ),
-  MAX_VIDEO_DURATION_SECONDS: parseInt(
-    process.env.MAX_VIDEO_DURATION || "14400",
-    10
-  ),
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+  ENABLE_YOUTUBE_IMPORT: process.env.ENABLE_YOUTUBE_IMPORT !== "false",
+  MAX_TRANSCRIPT_SIZE: parseInt(process.env.MAX_TRANSCRIPT_SIZE || "500000", 10),
+  MAX_VIDEO_DURATION_SECONDS: parseInt(process.env.MAX_VIDEO_DURATION || "14400", 10),
+
+  /** Document intelligence indexing (Phase 5) */
+  ENABLE_LAYOUT_ANALYSIS: process.env.ENABLE_LAYOUT_ANALYSIS !== "false",
+  ENABLE_ENTITY_EXTRACTION_INDEX:
+    process.env.ENABLE_ENTITY_EXTRACTION_INDEX !== "false",
+  ENABLE_RELATIONSHIP_EXTRACTION:
+    process.env.ENABLE_RELATIONSHIP_EXTRACTION !== "false",
+  ENABLE_KNOWLEDGE_GRAPH: process.env.ENABLE_KNOWLEDGE_GRAPH !== "false",
+  ENABLE_INCREMENTAL_INDEXING:
+    process.env.ENABLE_INCREMENTAL_INDEXING !== "false",
+  ENABLE_TABLE_ANALYSIS: process.env.ENABLE_TABLE_ANALYSIS !== "false",
+  ENABLE_IMAGE_ANALYSIS: process.env.ENABLE_IMAGE_ANALYSIS !== "false",
+  ENABLE_CODE_ANALYSIS: process.env.ENABLE_CODE_ANALYSIS !== "false",
+  ENABLE_INDEX_VALIDATION: process.env.ENABLE_INDEX_VALIDATION !== "false",
+  /** Current embedding schema version for re-indexing support */
+  EMBEDDING_VERSION: process.env.EMBEDDING_VERSION || "1.0.0",
+  INDEX_VERSION: parseInt(process.env.INDEX_VERSION || "1", 10),
+  /** Parallel chunk processing during indexing */
+  INDEXING_CONCURRENCY: parseInt(process.env.INDEXING_CONCURRENCY || "4", 10),
 };

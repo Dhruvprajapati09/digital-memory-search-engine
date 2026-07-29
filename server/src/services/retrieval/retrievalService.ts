@@ -1,20 +1,16 @@
-import { generateQueryEmbedding } from "../embeddingService";
-import { vectorStore } from "../vectorStoreService";
 import { env } from "../../config/env";
 import type {
   RetrievalOptions,
   RetrievalResult,
   RetrievedChunk,
 } from "../../types/chat";
-<<<<<<< HEAD
-=======
-import { buildContext } from "../ai/contextBuilder";
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+import { formatContextText } from "../ai/contextBuilder";
+import { assembleContext } from "../context/contextAssembler";
+import { retrieve } from "./retrievalCore";
+import { runQueryPipeline } from "../query/queryPipeline";
 
 /**
- * Retrieval service — semantic chunk retrieval for search and RAG.
- *
- * Pipeline: embed query (Mistral) → Pinecone similarity search → hydrate from MongoDB.
+ * Retrieval service — query pipeline → RetrievalCore (hybrid + ranking).
  */
 export async function retrieveRelevantChunks(
   options: RetrievalOptions
@@ -26,30 +22,50 @@ export async function retrieveRelevantChunks(
   }
 
   const limit = options.limit ?? env.RAG_TOP_K;
-  const minScore = options.minScore ?? env.RAG_MIN_SCORE;
+  const minVectorScore = options.minScore ?? env.RAG_MIN_SCORE;
 
-  const embedding = await generateQueryEmbedding(trimmed);
+  const candidateLimit = env.ENABLE_RERANKER
+    ? env.RETRIEVAL_CANDIDATES
+    : Math.max(limit, env.RETRIEVAL_TOP_K);
 
-  const hits = await vectorStore.searchVector({
-    vector: embedding.vector,
+  const queryAnalysis = await runQueryPipeline(trimmed, {
     userId: options.userId,
+  });
+
+  const result = await retrieve({
+    userId: options.userId,
+    query: trimmed,
+    queryAnalysis,
     limit,
-    minScore,
+    candidateLimit,
+    minVectorScore,
     documentIds: options.documentIds,
     topic: options.topic,
     tags: options.tags,
   });
 
-  const chunks: RetrievedChunk[] = hits.map((hit) => ({
+  const chunks: RetrievedChunk[] = result.chunks.map((hit) => ({
     vectorId: hit.vectorId,
-    score: hit.score,
+    score: hit.confidenceScore > 0 ? hit.confidenceScore : hit.finalScore,
     text: hit.text,
-    metadata: hit.metadata,
+    metadata: {
+      ...hit.metadata,
+      confidenceScore: hit.confidenceScore,
+      retrievalScore: hit.finalScore,
+      ...(hit.crossEncoderScore !== undefined
+        ? { crossEncoderScore: hit.crossEncoderScore }
+        : {}),
+      ...(hit.hybridScore !== undefined ? { hybridScore: hit.hybridScore } : {}),
+      ...(hit.graphScore !== undefined ? { graphScore: hit.graphScore } : {}),
+      ...(hit.graphConfidence !== undefined
+        ? { graphConfidence: hit.graphConfidence }
+        : {}),
+    },
     topic: hit.topic,
     subtopic: hit.subtopic,
     title: hit.title,
     summary: hit.summary,
-    keywords: hit.keywords,
+    keywords: hit.keywords ?? hit.matchedKeywords,
     tags: hit.tags,
     sectionPath: hit.sectionPath,
     contentPreview: hit.contentPreview,
@@ -57,32 +73,24 @@ export async function retrieveRelevantChunks(
 
   return {
     chunks,
-    queryEmbeddingModel: embedding.model,
+    queryEmbeddingModel: result.queryEmbeddingModel,
   };
 }
 
-/** Format retrieved chunks into a context block for the LLM */
-export function buildContextFromChunks(chunks: RetrievedChunk[]): string {
-<<<<<<< HEAD
-  if (chunks.length === 0) return "";
+/** Format retrieved chunks into a context block for the LLM (with Phase 3 assembly) */
+export async function buildContextFromChunks(
+  userId: string,
+  chunks: RetrievedChunk[]
+): Promise<string> {
+  const assembled = await assembleContext(userId, chunks);
+  return formatContextText(assembled.chunks);
+}
 
-  return chunks
-    .map((chunk, index) => {
-      const header = [
-        `[Source ${index + 1}]`,
-        chunk.title ? `Title: ${chunk.title}` : null,
-        chunk.topic ? `Topic: ${chunk.topic}` : null,
-        chunk.metadata.documentTitle
-          ? `Document: ${chunk.metadata.documentTitle}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" | ");
-
-      return `${header}\n${chunk.text}`;
-    })
-    .join("\n\n---\n\n");
-=======
-  return buildContext(chunks).text;
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+/** Assemble context chunks for RAG (expand, dedupe, order, budget) */
+export async function assembleRetrievalContext(
+  userId: string,
+  seedChunks: RetrievedChunk[]
+): Promise<RetrievedChunk[]> {
+  const assembled = await assembleContext(userId, seedChunks);
+  return assembled.chunks;
 }

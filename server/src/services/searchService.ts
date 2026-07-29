@@ -1,30 +1,33 @@
-import mongoose from "mongoose";
-import DocumentModel, { DocumentType } from "../models/Document";
 import { AppError } from "../middleware/error.middleware";
-import { generateQueryEmbedding } from "./embeddingService";
-import { vectorStore } from "./vectorStoreService";
-import { fuseSearchResults } from "./search/hybridSearchService";
 import {
-  rankDocumentGroups,
   generatePreviewSnippet,
+  groupRankedChunksIntoDocuments,
   tokenizeQuery,
 } from "./rankingService";
 import { saveSearchQuery } from "./searchHistoryService";
+import {
+  retrieve,
+  loadDocumentMetaForSearch,
+} from "./retrieval/retrievalCore";
+import { runQueryPipeline } from "./query/queryPipeline";
+import { env } from "../config/env";
 import type {
   SearchRequest,
   SearchResponse,
   SearchResult,
   SearchFilter,
   DateFilterPreset,
+  SearchMode,
+  ChunkSearchResult,
+  SearchDebugInfo,
 } from "../types/search";
+import type { DocumentType } from "../models/Document";
 
 const MIN_QUERY_LENGTH = 1;
 const MAX_QUERY_LENGTH = 500;
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
-/** Fetch extra chunk hits before grouping so pagination has enough documents */
-const RETRIEVAL_MULTIPLIER = 8;
 
 function validateQuery(query: string): string {
   const trimmed = query.trim();
@@ -66,84 +69,9 @@ function parseDocumentType(value: unknown): DocumentType | undefined {
   return undefined;
 }
 
-function resolveDateRange(filter: SearchFilter): {
-  from?: Date;
-  to?: Date;
-} {
-  const now = new Date();
-  const endOfToday = new Date(now);
-  endOfToday.setHours(23, 59, 59, 999);
-
-  switch (filter.date) {
-    case "today": {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      return { from: start, to: endOfToday };
-    }
-    case "7d": {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 7);
-      return { from, to: endOfToday };
-    }
-    case "30d": {
-      const from = new Date(now);
-      from.setDate(from.getDate() - 30);
-      return { from, to: endOfToday };
-    }
-    case "custom": {
-      const from = filter.dateFrom ? new Date(filter.dateFrom) : undefined;
-      const to = filter.dateTo ? new Date(filter.dateTo) : undefined;
-
-      if (from && Number.isNaN(from.getTime())) {
-        throw new AppError("Invalid dateFrom value", 400);
-      }
-
-      if (to && Number.isNaN(to.getTime())) {
-        throw new AppError("Invalid dateTo value", 400);
-      }
-
-      return { from, to };
-    }
-    default:
-      return {};
-  }
-}
-
-async function getFilteredDocumentIds(
-  userId: string,
-  filter: SearchFilter
-): Promise<string[] | undefined> {
-  const hasTypeFilter = Boolean(filter.type);
-  const dateRange = resolveDateRange(filter);
-  const hasDateFilter = Boolean(dateRange.from || dateRange.to);
-
-  if (!hasTypeFilter && !hasDateFilter) {
-    return undefined;
-  }
-
-  const mongoFilter: Record<string, unknown> = {
-    userId: new mongoose.Types.ObjectId(userId),
-    indexStatus: "indexed",
-  };
-
-  if (filter.type) {
-    mongoFilter.type = filter.type;
-  }
-
-  if (dateRange.from || dateRange.to) {
-    mongoFilter.createdAt = {};
-
-    if (dateRange.from) {
-      (mongoFilter.createdAt as Record<string, Date>).$gte = dateRange.from;
-    }
-
-    if (dateRange.to) {
-      (mongoFilter.createdAt as Record<string, Date>).$lte = dateRange.to;
-    }
-  }
-
-  const docs = await DocumentModel.find(mongoFilter).select("_id").lean();
-  return docs.map((doc) => doc._id.toString());
+function parseSearchMode(value: unknown): SearchMode {
+  if (value === "chunks") return "chunks";
+  return "documents";
 }
 
 function buildSearchFilter(params: SearchRequest): SearchFilter {
@@ -158,8 +86,7 @@ function buildSearchFilter(params: SearchRequest): SearchFilter {
 }
 
 /**
- * Hybrid search pipeline:
- * vector retrieval + keyword retrieval → RRF fusion → topic/title/phrase rerank → group by document.
+ * Search API: delegates retrieval to RetrievalCore, then shapes results for the UI.
  */
 export async function searchDocuments(
   userId: string,
@@ -169,120 +96,175 @@ export async function searchDocuments(
   const query = validateQuery(params.q);
   const page = parsePage(params.page);
   const limit = parseLimit(params.limit);
+  const mode = parseSearchMode(params.mode);
   const filter = buildSearchFilter(params);
 
-  const filteredDocumentIds = await getFilteredDocumentIds(userId, filter);
+  const candidateLimit = env.ENABLE_RERANKER
+    ? Math.max(
+        limit * page * env.RETRIEVAL_MULTIPLIER,
+        env.RETRIEVAL_CANDIDATES
+      )
+    : Math.max(
+        limit * page * env.RETRIEVAL_MULTIPLIER,
+        env.RETRIEVAL_TOP_K
+      );
 
-  if (filteredDocumentIds !== undefined && filteredDocumentIds.length === 0) {
+  const queryAnalysis = await runQueryPipeline(query, { userId });
+
+  const retrieval = await retrieve({
+    userId,
+    query,
+    queryAnalysis,
+    filter,
+    topic: filter.topic,
+    tags: filter.tag ? [filter.tag] : undefined,
+    candidateLimit,
+    limit: candidateLimit,
+    minVectorScore: env.MIN_VECTOR_SCORE,
+  });
+
+  if (retrieval.noDocumentsInScope) {
     const searchTimeMs = Date.now() - startedAt;
     await saveSearchQuery(userId, query, 0, searchTimeMs);
 
     return {
       success: true,
       query,
+      mode,
       totalResults: 0,
       page,
       limit,
       totalPages: 0,
       searchTimeMs,
       results: [],
+      ...(mode === "chunks" ? { chunkResults: [] } : {}),
     };
   }
 
-  const retrievalLimit = Math.max(limit * page * RETRIEVAL_MULTIPLIER, 60);
+  const highlightTerms = tokenizeQuery(query);
 
-  const embedding = await generateQueryEmbedding(query);
+  const buildSearchDebug = (): SearchDebugInfo | undefined => {
+    if (!env.ENABLE_SEARCH_DEBUG) return undefined;
 
-  const [vectorHits, keywordHits] = await Promise.all([
-    vectorStore.searchVector({
-      vector: embedding.vector,
-      userId,
-      limit: retrievalLimit,
-      minScore: 0.08,
-      documentIds: filteredDocumentIds,
-      topic: filter.topic,
-      tags: filter.tag ? [filter.tag] : undefined,
-    }),
-    vectorStore.searchKeyword({
-      query,
-      userId,
-      limit: retrievalLimit,
-      documentIds: filteredDocumentIds,
-    }),
-  ]);
+    const rd = retrieval.rerankDebug;
+    const candidateCount =
+      rd?.candidateCount ??
+      retrieval.graphDebug?.candidateChunkCount ??
+      retrieval.chunks.length;
 
-  const fusedHits = fuseSearchResults(vectorHits, keywordHits);
+    return {
+      retrievalStage: retrieval.graphDebug?.enabled
+        ? "hybrid-rrf-graph-rerank"
+        : "hybrid-rrf-rerank",
+      candidateCount,
+      graph: retrieval.graphDebug,
+      rerankLatencyMs: rd?.rerankLatencyMs,
+      rerankProvider: rd?.provider,
+      rerankStage: rd?.stage,
+      rerankError: rd?.error,
+      rerankRetryAttempts: rd?.retryAttempts,
+      rankingChanges: rd?.rankingChanges,
+      chunkScores: Object.fromEntries(
+        retrieval.chunks.map((chunk) => [
+          chunk.vectorId,
+          {
+            crossEncoderScore: chunk.crossEncoderScore,
+            hybridScore: chunk.hybridScore,
+            graphScore: chunk.graphScore,
+            graphConfidence: chunk.graphConfidence,
+            finalScore: chunk.finalScore,
+            confidence: chunk.confidenceScore,
+          },
+        ])
+      ),
+    };
+  };
 
-  const uniqueDocIds = [
-    ...new Set(
-      fusedHits.map((hit) => hit.metadata.documentId).filter(Boolean)
-    ),
-  ];
+  const searchDebug = buildSearchDebug();
 
-  const documents = await DocumentModel.find({
-    _id: { $in: uniqueDocIds },
-    userId,
-  })
-    .select(
-      "_id title type createdAt videoChannel videoThumbnail videoUrl youtubeVideoId"
-    )
-    .lean();
+  if (mode === "chunks") {
+    const totalResults = retrieval.chunks.length;
+    const totalPages = totalResults === 0 ? 0 : Math.ceil(totalResults / limit);
+    const offset = (page - 1) * limit;
+    const pageChunks = retrieval.chunks.slice(offset, offset + limit);
 
-  const documentMeta = new Map<
-    string,
-    {
-      title: string;
-      type: string;
-      createdAt: Date;
-      videoChannel?: string;
-      videoThumbnail?: string;
-      videoUrl?: string;
-      youtubeVideoId?: string;
-    }
-  >();
+    const docIds = [...new Set(pageChunks.map((c) => c.documentId))];
+    const documentMeta = await loadDocumentMetaForSearch(userId, docIds);
 
-  for (const doc of documents) {
-    documentMeta.set(doc._id.toString(), {
-      title: doc.title,
-      type: doc.type,
-      createdAt: doc.createdAt,
-      videoChannel: doc.videoChannel,
-      videoThumbnail: doc.videoThumbnail,
-      videoUrl: doc.videoUrl,
-      youtubeVideoId: doc.youtubeVideoId,
+    const chunkResults: ChunkSearchResult[] = pageChunks.map((chunk) => {
+      const docMeta = documentMeta.get(chunk.documentId);
+      const isVideo = docMeta?.type === "video";
+
+      return {
+        chunkId: chunk.vectorId,
+        documentId: chunk.documentId,
+        documentTitle: docMeta?.title ?? "Untitled",
+        documentType: (docMeta?.type ?? "note") as ChunkSearchResult["documentType"],
+        chunkIndex: chunk.chunkIndex,
+        score: Math.round(chunk.finalScore * 100) / 100,
+        confidenceScore: chunk.confidenceScore,
+        preview: generatePreviewSnippet(chunk.contentPreview, query),
+        highlightTerms,
+        topic: chunk.topic,
+        subtopic: chunk.subtopic,
+        title: chunk.title,
+        sectionPath: chunk.sectionPath,
+        matchedKeywords: chunk.matchedKeywords,
+        ...(env.ENABLE_SEARCH_DEBUG
+          ? {
+              debug: {
+                crossEncoderScore: chunk.crossEncoderScore,
+                hybridScore: chunk.hybridScore,
+                graphScore: chunk.graphScore,
+                graphConfidence: chunk.graphConfidence,
+                finalScore: chunk.finalScore,
+                confidence: chunk.confidenceScore,
+              },
+            }
+          : {}),
+        ...(isVideo
+          ? {
+              timestamp: chunk.timestampFormatted,
+              timestampSeconds: chunk.timestampSeconds,
+              videoUrl: chunk.videoUrl ?? docMeta?.videoUrl,
+            }
+          : {}),
+      };
     });
+
+    const searchTimeMs = Date.now() - startedAt;
+    await saveSearchQuery(userId, query, totalResults, searchTimeMs);
+
+    return {
+      success: true,
+      query,
+      mode,
+      totalResults,
+      page,
+      limit,
+      totalPages,
+      searchTimeMs,
+      results: [],
+      chunkResults,
+      ...(searchDebug ? { debug: searchDebug } : {}),
+    };
   }
 
-  const ranked = rankDocumentGroups(fusedHits, documentMeta, query);
+  const uniqueDocIds = [
+    ...new Set(retrieval.chunks.map((c) => c.documentId)),
+  ];
+  const documentMeta = await loadDocumentMetaForSearch(userId, uniqueDocIds);
+
+  const ranked = groupRankedChunksIntoDocuments(
+    retrieval.chunks,
+    documentMeta
+  );
+
   const totalResults = ranked.length;
   const totalPages = totalResults === 0 ? 0 : Math.ceil(totalResults / limit);
   const offset = (page - 1) * limit;
   const pageResults = ranked.slice(offset, offset + limit);
-  const highlightTerms = tokenizeQuery(query);
 
-<<<<<<< HEAD
-  const results: SearchResult[] = pageResults.map((item) => ({
-    documentId: item.documentId,
-    title: item.title,
-    type: item.type,
-    score: Math.round(item.finalScore * 100) / 100,
-    preview: generatePreviewSnippet(item.bestChunkText, query),
-    highlightTerms,
-    matchedChunks: item.matchedChunks.map(
-      ({ chunkIndex, score, topic, subtopic, title, sectionPath }) => ({
-        chunkIndex,
-        score: Math.round(score * 100) / 100,
-        topic,
-        subtopic,
-        title,
-        sectionPath,
-      })
-    ),
-    createdAt: item.createdAt.toISOString(),
-    topTopic: item.topTopic,
-    topSubtopic: item.topSubtopic,
-  }));
-=======
   const results: SearchResult[] = pageResults.map((item) => {
     const docMeta = documentMeta.get(item.documentId);
     const topChunk = item.matchedChunks[0];
@@ -333,7 +315,6 @@ export async function searchDocuments(
         : {}),
     };
   });
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 
   const searchTimeMs = Date.now() - startedAt;
 
@@ -342,11 +323,13 @@ export async function searchDocuments(
   return {
     success: true,
     query,
+    mode: "documents",
     totalResults,
     page,
     limit,
     totalPages,
     searchTimeMs,
     results,
+    ...(searchDebug ? { debug: searchDebug } : {}),
   };
 }

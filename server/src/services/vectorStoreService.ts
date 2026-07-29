@@ -9,6 +9,7 @@ import {
   buildPineconeFilter,
 } from "./pinecone/pineconeService";
 import type { PineconeChunkMetadata } from "../types/pinecone";
+import type { ExtractedEntity, ExtractedRelationship } from "../types/documentIntelligence";
 import type {
   IVectorStore,
   StoreVectorPayload,
@@ -22,38 +23,6 @@ import type {
 function mapChunkToSearchResult(
   chunk: Record<string, unknown> & { score: number }
 ): VectorSearchResult {
-<<<<<<< HEAD
-  const metadata: VectorMetadata = {
-    documentId: String(chunk.documentId),
-    userId: String(chunk.userId),
-    chunkIndex: chunk.chunkIndex as number,
-    type: chunk.sourceType as string,
-    documentTitle: (chunk.metadata as Record<string, unknown>)?.documentTitle as
-      | string
-      | undefined,
-    topic: chunk.topic as string,
-    subtopic: chunk.subtopic as string | undefined,
-    title: chunk.title as string,
-    summary: chunk.summary as string,
-    keywords: chunk.keywords as string[],
-    concepts: chunk.concepts as string[],
-    tags: chunk.tags as string[],
-    sectionPath: chunk.sectionPath as string[],
-    contentPreview: chunk.contentPreview as string,
-    level: chunk.level as string,
-    parentChunkIndex: chunk.parentChunkIndex as number | undefined,
-    parentChunkId: chunk.parentChunkId
-      ? String(chunk.parentChunkId)
-      : undefined,
-  };
-
-  return {
-    vectorId: chunk.vectorId as string,
-    score: chunk.score,
-    text: chunk.text as string,
-    metadata,
-    topic: chunk.topic as string,
-=======
   const storedMeta =
     (chunk.metadata as Record<string, unknown> | undefined) ?? {};
 
@@ -64,19 +33,10 @@ function mapChunkToSearchResult(
     type: (storedMeta.type as string) ?? (chunk.sourceType as string),
     documentTitle: storedMeta.documentTitle as string | undefined,
     topic: (chunk.topic as string) ?? (storedMeta.topic as string | undefined),
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
     subtopic: chunk.subtopic as string | undefined,
     title: chunk.title as string,
     summary: chunk.summary as string,
     keywords: chunk.keywords as string[],
-<<<<<<< HEAD
-    tags: chunk.tags as string[],
-    sectionPath: chunk.sectionPath as string[],
-    contentPreview: chunk.contentPreview as string,
-  };
-}
-
-=======
     concepts: chunk.concepts as string[],
     tags: chunk.tags as string[],
     sectionPath: chunk.sectionPath as string[],
@@ -112,12 +72,10 @@ function mapChunkToSearchResult(
     contentPreview: chunk.contentPreview as string,
   };
 }
-
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
 function buildPineconeMetadata(
   payload: StoreVectorPayload
 ): PineconeChunkMetadata {
-  return {
+  const meta: PineconeChunkMetadata = {
     userId: payload.metadata.userId,
     documentId: payload.metadata.documentId,
     chunkIndex: payload.metadata.chunkIndex,
@@ -126,7 +84,14 @@ function buildPineconeMetadata(
     title: payload.title,
     sourceType: payload.sourceType,
     tags: (payload.tags ?? []).map((t) => t.toLowerCase()),
+    pageNumber: payload.pageNumber ?? 0,
+    chapter: payload.chapter ?? "",
+    section: payload.section ?? "",
+    language: payload.language ?? "en",
+    embeddingVersion: payload.embeddingVersion ?? "",
   };
+
+  return meta;
 }
 
 /**
@@ -163,6 +128,21 @@ class PineconeVectorStore implements IVectorStore {
       parentChunkId: payload.parentChunkId
         ? new mongoose.Types.ObjectId(payload.parentChunkId)
         : undefined,
+      chapter: payload.chapter,
+      section: payload.section,
+      heading: payload.heading,
+      parentHeading: payload.parentHeading,
+      pageNumber: payload.pageNumber,
+      pageRange: payload.pageRange,
+      pageOffset: payload.pageOffset,
+      sourcePage: payload.sourcePage,
+      entities: payload.entities as ExtractedEntity[] | undefined,
+      relationships: payload.relationships as ExtractedRelationship[] | undefined,
+      language: payload.language,
+      embeddingVersion: payload.embeddingVersion,
+      embeddingDate: payload.embeddingDate,
+      chunkHash: payload.chunkHash,
+      indexVersion: payload.indexVersion,
       searchableText: payload.searchableText,
       metadata: payload.metadata,
     })) as IChunk;
@@ -232,6 +212,19 @@ class PineconeVectorStore implements IVectorStore {
         tags: payload.tags,
         sectionPath: payload.sectionPath,
         contentPreview: payload.contentPreview,
+        chapter: payload.chapter,
+        section: payload.section,
+        heading: payload.heading,
+        parentHeading: payload.parentHeading,
+        pageNumber: payload.pageNumber,
+        pageRange: payload.pageRange,
+        entities: payload.entities,
+        relationships: payload.relationships,
+        language: payload.language,
+        embeddingVersion: payload.embeddingVersion,
+        embeddingDate: payload.embeddingDate,
+        chunkHash: payload.chunkHash,
+        indexVersion: payload.indexVersion,
         searchableText: payload.searchableText,
         metadata: payload.metadata,
       }

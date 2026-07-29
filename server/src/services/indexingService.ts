@@ -1,31 +1,38 @@
 import DocumentModel, { IDocument } from "../models/Document";
 import ChunkModel from "../models/Chunk";
-<<<<<<< HEAD
-import { chunkTextByTopics } from "./chunking/topicChunkingService";
-import {
-=======
 import VideoModel from "../models/Video";
 import { chunkTextByTopics } from "./chunking/topicChunkingService";
 import {
   chunkTranscriptByTopics,
   type TimestampedTopicChunk,
 } from "./chunking/transcriptChunkingService";
-import {
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
-  enrichChunkMetadata,
-  buildEmbeddingText,
-  buildSearchableText,
-} from "./enrichment/chunkEnrichmentService";
+import { buildEmbeddingText } from "./enrichment/chunkEnrichmentService";
 import { generateEmbeddingsBatch } from "./embeddingService";
 import { vectorStore } from "./vectorStoreService";
 import { env } from "../config/env";
 import type { StoreVectorPayload, VectorMetadata } from "../types/embedding";
-<<<<<<< HEAD
-
-const EMBEDDING_BATCH_SIZE = 8;
-=======
 import type { TopicChunk } from "../types/chunking";
+import type {
+  DocumentIntelligenceResult,
+  SemanticChunk,
+} from "../types/documentIntelligence";
 import { invalidateSummaryCache } from "./ai/summarizer";
+import {
+  runDocumentIntelligencePipeline,
+  isDocumentIntelligenceEnabled,
+} from "./indexing/documentIntelligencePipeline";
+import { enrichAllSemanticChunks } from "./indexing/metadataEnrichmentService";
+import {
+  planIncrementalIndex,
+  getChunksNeedingEmbeddings,
+} from "./indexing/incrementalIndexingService";
+import {
+  buildKnowledgeGraphData,
+  persistKnowledgeGraph,
+  deleteKnowledgeGraph,
+} from "./indexing/knowledgeGraphService";
+import { validateDocumentIndex } from "./indexing/indexValidationService";
+import { resolveSafeUploadPath } from "./extractionService";
 
 const EMBEDDING_BATCH_SIZE = 8;
 
@@ -33,19 +40,30 @@ type IndexableChunk = TopicChunk & {
   videoMetadata?: TimestampedTopicChunk["videoMetadata"];
 };
 
-async function resolveChunksForDocument(
-  document: IDocument | null
-): Promise<IndexableChunk[]> {
-  if (!document) return [];
+async function resolveFilePath(document: IDocument): Promise<string | undefined> {
+  if (!document.storedFileName) return undefined;
+  try {
+    return resolveSafeUploadPath(document.storedFileName);
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveSemanticChunks(
+  document: IDocument
+): Promise<{
+  chunks: SemanticChunk[];
+  intelligence?: DocumentIntelligenceResult;
+}> {
+  const extractedText = document.extractedText?.trim() ?? "";
 
   if (document.type === "video" && document.videoId) {
     const video = await VideoModel.findById(document.videoId);
-
     if (!video || video.transcriptSegments.length === 0) {
-      return [];
+      return { chunks: [] };
     }
 
-    return chunkTranscriptByTopics(video.transcriptSegments, {
+    const transcriptChunks = chunkTranscriptByTopics(video.transcriptSegments, {
       documentTitle: document.title,
       videoTitle: document.title,
       maxTokens: env.CHUNK_MAX_TOKENS,
@@ -53,12 +71,33 @@ async function resolveChunksForDocument(
       channel: video.channel,
       videoUrl: video.url,
     });
+
+    return {
+      chunks: transcriptChunks.map((chunk) => ({
+        ...chunk,
+      })) as SemanticChunk[],
+    };
   }
 
-  return chunkTextByTopics(document.extractedText ?? "", {
-    documentTitle: document.title,
-    maxTokens: env.CHUNK_MAX_TOKENS,
-  });
+  if (isDocumentIntelligenceEnabled()) {
+    const filePath = await resolveFilePath(document);
+    const intelligence = await runDocumentIntelligencePipeline({
+      documentId: document._id.toString(),
+      userId: document.userId.toString(),
+      title: document.title,
+      sourceType: document.type,
+      extractedText,
+      filePath,
+    });
+    return { chunks: intelligence.chunks, intelligence };
+  }
+
+  return {
+    chunks: chunkTextByTopics(extractedText, {
+      documentTitle: document.title,
+      maxTokens: env.CHUNK_MAX_TOKENS,
+    }) as SemanticChunk[],
+  };
 }
 
 async function syncVideoStatusAfterIndexing(
@@ -75,11 +114,123 @@ async function syncVideoStatusAfterIndexing(
     statusError: errorMessage ?? null,
   });
 }
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+
+function buildStorePayload(
+  document: IDocument,
+  chunk: SemanticChunk,
+  enrichmentResult: ReturnType<typeof enrichAllSemanticChunks>[number],
+  embedding: { vector: number[]; model: string },
+  videoMeta?: TimestampedTopicChunk["videoMetadata"]
+): StoreVectorPayload {
+  const { enrichment, fields, searchableText } = enrichmentResult;
+
+  const metadata: VectorMetadata = {
+    documentId: document._id.toString(),
+    userId: document.userId.toString(),
+    chunkIndex: chunk.chunkIndex,
+    type: document.type,
+    documentTitle: document.title,
+    topic: enrichment.topic,
+    subtopic: enrichment.subtopic,
+    title: enrichment.title,
+    summary: enrichment.summary,
+    keywords: fields.keywords,
+    concepts: fields.concepts,
+    tags: fields.tags,
+    sectionPath: enrichment.sectionPath,
+    contentPreview: enrichment.contentPreview,
+    level: enrichment.level,
+    parentChunkIndex: enrichment.parentChunkIndex,
+    chapter: chunk.chapter,
+    section: chunk.section,
+    heading: chunk.heading,
+    parentHeading: chunk.parentHeading,
+    pageNumber: chunk.pageNumber,
+    pageRange: chunk.pageRange,
+    language: fields.language,
+    embeddingVersion: fields.embeddingVersion,
+    chunkHash: fields.chunkHash,
+    indexVersion: fields.indexVersion,
+    entities: fields.entities,
+    relationships: fields.relationships,
+    ...(videoMeta
+      ? {
+          sourceType: "video",
+          youtubeVideoId: videoMeta.youtubeVideoId,
+          videoUrl: videoMeta.videoUrl,
+          channel: videoMeta.channel,
+          startSeconds: videoMeta.startSeconds,
+          endSeconds: videoMeta.endSeconds,
+          startTimeFormatted: videoMeta.startTimeFormatted,
+          endTimeFormatted: videoMeta.endTimeFormatted,
+          timestampSeconds: videoMeta.startSeconds,
+          timestampFormatted: videoMeta.startTimeFormatted,
+        }
+      : {}),
+  };
+
+  return {
+    vector: embedding.vector,
+    text: chunk.text,
+    searchableText,
+    metadata,
+    embeddingModel: embedding.model,
+    tokenCount: chunk.tokenCount,
+    topic: enrichment.topic,
+    subtopic: enrichment.subtopic,
+    title: enrichment.title,
+    summary: fields.summary,
+    keywords: fields.keywords,
+    concepts: fields.concepts,
+    tags: fields.tags,
+    sourceType: videoMeta ? "video" : document.type,
+    sectionPath: enrichment.sectionPath,
+    contentPreview: enrichment.contentPreview,
+    level: enrichment.level,
+    parentChunkIndex: enrichment.parentChunkIndex,
+    chapter: chunk.chapter,
+    section: chunk.section,
+    heading: chunk.heading,
+    parentHeading: chunk.parentHeading,
+    pageNumber: chunk.pageNumber,
+    pageRange: chunk.pageRange,
+    pageOffset: chunk.pageOffset,
+    sourcePage: chunk.sourcePage,
+    entities: fields.entities,
+    relationships: fields.relationships,
+    language: fields.language,
+    embeddingVersion: fields.embeddingVersion,
+    embeddingDate: fields.embeddingDate,
+    chunkHash: fields.chunkHash,
+    indexVersion: fields.indexVersion,
+  };
+}
+
+async function processChunksInParallel<T>(
+  items: T[],
+  concurrency: number,
+  processor: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  let index = 0;
+
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const current = index;
+      index += 1;
+      await processor(items[current], current);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+}
 
 /**
- * Orchestrates topic-based indexing:
- * structure parse → topic chunk → enrich → embed → store → link hierarchy.
+ * Orchestrates document intelligence indexing:
+ * structure → semantic chunk → enrich → embed → store → graph → validate.
  */
 export async function runIndexingForDocument(
   documentId: string
@@ -93,7 +244,7 @@ export async function runIndexingForDocument(
     }
 
     console.log(
-      `[indexingService] Topic indexing started: ${documentId} (${document.title})`
+      `[indexingService] Indexing started: ${documentId} (${document.title})`
     );
 
     const extractedText = document.extractedText?.trim();
@@ -117,178 +268,133 @@ export async function runIndexingForDocument(
     document.indexError = null;
     await document.save();
 
-    await vectorStore.deleteVectorsByDocument(
-      documentId,
-      document.userId.toString()
-    );
+    const userId = document.userId.toString();
+    const embeddingModel = env.MISTRAL_EMBEDDING_MODEL;
 
-<<<<<<< HEAD
-    const topicChunks = chunkTextByTopics(extractedText, {
-      documentTitle: document.title,
-      maxTokens: env.CHUNK_MAX_TOKENS,
-    });
-=======
-    const topicChunks = await resolveChunksForDocument(document);
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+    // Resolve semantic chunks via Phase 5 pipeline or legacy chunking
+    const { chunks: semanticChunks, intelligence } =
+      await resolveSemanticChunks(document);
 
     console.log(
-      `[indexingService] Topic chunks for ${documentId}: ${topicChunks.length}`
+      `[indexingService] Chunks for ${documentId}: ${semanticChunks.length}`
     );
 
-    if (topicChunks.length === 0) {
+    if (semanticChunks.length === 0) {
       document.indexStatus = "failed";
-      document.indexError = "Topic chunking produced no chunks";
+      document.indexError = "Chunking produced no chunks";
       await document.save();
       await syncVideoStatusAfterIndexing(document, 0, true, document.indexError);
       return;
     }
 
-    const enriched = topicChunks.map((chunk) => ({
-      chunk,
-      meta: enrichChunkMetadata(chunk),
-    }));
-
-    const embeddingTexts = enriched.map(({ chunk, meta }) =>
-      buildEmbeddingText(chunk, meta)
+    // Incremental indexing plan
+    const indexPlan = await planIncrementalIndex(
+      documentId,
+      userId,
+      semanticChunks,
+      embeddingModel
     );
 
-    console.log(
-      `[indexingService] Generating embeddings (batch=${EMBEDDING_BATCH_SIZE}) for ${documentId}`
-    );
-
-    const embeddings = await generateEmbeddingsBatch(embeddingTexts, {
-      taskType: { kind: "document" },
-      batchSize: EMBEDDING_BATCH_SIZE,
-      onProgress: (done, total) => {
-        console.log(
-          `[indexingService] Embeddings ${done}/${total} for ${documentId}`
-        );
-      },
-    });
-
-    const chunkIdByIndex = new Map<number, string>();
-    let processedChunks = 0;
-    const errors: string[] = [];
-
-    for (let i = 0; i < enriched.length; i += 1) {
-      try {
-        const { chunk, meta } = enriched[i];
-        const embedding = embeddings[i];
-        const searchableText = buildSearchableText(chunk, meta);
-
-<<<<<<< HEAD
-        const metadata: VectorMetadata = {
-          documentId,
-          userId: document.userId.toString(),
-          chunkIndex: chunk.chunkIndex,
-          type: document.type,
-          documentTitle: document.title,
-          topic: meta.topic,
-          subtopic: meta.subtopic,
-          title: meta.title,
-          summary: meta.summary,
-          keywords: meta.keywords,
-          concepts: meta.concepts,
-          tags: meta.tags,
-          sectionPath: meta.sectionPath,
-          contentPreview: meta.contentPreview,
-          level: meta.level,
-          parentChunkIndex: meta.parentChunkIndex,
-        };
-
-        const payload: StoreVectorPayload = {
-          vector: embedding.vector,
-          text: chunk.text,
-          searchableText,
-          metadata,
-          embeddingModel: embedding.model,
-          tokenCount: chunk.tokenCount,
-=======
-        const videoMeta =
-          "videoMetadata" in chunk
-            ? (chunk as IndexableChunk).videoMetadata
-            : undefined;
-
-        const metadata: VectorMetadata = {
-          documentId,
-          userId: document.userId.toString(),
-          chunkIndex: chunk.chunkIndex,
-          type: document.type,
-          documentTitle: document.title,
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
-          topic: meta.topic,
-          subtopic: meta.subtopic,
-          title: meta.title,
-          summary: meta.summary,
-          keywords: meta.keywords,
-          concepts: meta.concepts,
-          tags: meta.tags,
-<<<<<<< HEAD
-          sourceType: document.type,
-=======
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
-          sectionPath: meta.sectionPath,
-          contentPreview: meta.contentPreview,
-          level: meta.level,
-          parentChunkIndex: meta.parentChunkIndex,
-<<<<<<< HEAD
-        };
-
-=======
-          ...(videoMeta
-            ? {
-                sourceType: "video",
-                youtubeVideoId: videoMeta.youtubeVideoId,
-                videoUrl: videoMeta.videoUrl,
-                channel: videoMeta.channel,
-                startSeconds: videoMeta.startSeconds,
-                endSeconds: videoMeta.endSeconds,
-                startTimeFormatted: videoMeta.startTimeFormatted,
-                endTimeFormatted: videoMeta.endTimeFormatted,
-                timestampSeconds: videoMeta.startSeconds,
-                timestampFormatted: videoMeta.startTimeFormatted,
-              }
-            : {}),
-        };
-
-        const payload: StoreVectorPayload = {
-          vector: embedding.vector,
-          text: chunk.text,
-          searchableText,
-          metadata,
-          embeddingModel: embedding.model,
-          tokenCount: chunk.tokenCount,
-          topic: meta.topic,
-          subtopic: meta.subtopic,
-          title: meta.title,
-          summary: meta.summary,
-          keywords: meta.keywords,
-          concepts: meta.concepts,
-          tags: meta.tags,
-          sourceType: document.type,
-          sectionPath: meta.sectionPath,
-          contentPreview: meta.contentPreview,
-          level: meta.level,
-          parentChunkIndex: meta.parentChunkIndex,
-        };
-
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
-        const vectorId = await vectorStore.storeVector(payload);
-        chunkIdByIndex.set(chunk.chunkIndex, vectorId);
-        processedChunks += 1;
-      } catch (chunkErr) {
-        const message =
-          chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
-        errors.push(`chunk ${i}: ${message}`);
-        console.error(
-          `[indexingService] Chunk ${i} failed for ${documentId}:`,
-          chunkErr
-        );
+    if (!env.ENABLE_INCREMENTAL_INDEXING || indexPlan.isFullReindex) {
+      await vectorStore.deleteVectorsByDocument(documentId, userId);
+      await deleteKnowledgeGraph(documentId, userId);
+    } else {
+      for (const removed of indexPlan.removed) {
+        await vectorStore.deleteVector(removed.vectorId, userId);
       }
     }
 
+    const chunksToProcess = getChunksNeedingEmbeddings(indexPlan);
+
+    const enrichedAll = enrichAllSemanticChunks(chunksToProcess, embeddingModel);
+
+    const embeddingTexts = enrichedAll.map(({ chunk, enrichment }) =>
+      buildEmbeddingText(chunk, enrichment)
+    );
+
+    console.log(
+      `[indexingService] Generating embeddings (batch=${EMBEDDING_BATCH_SIZE}) for ${chunksToProcess.length} new/changed chunks`
+    );
+
+    const embeddingMap = new Map<number, { vector: number[]; model: string }>();
+
+    if (embeddingTexts.length > 0) {
+      const embeddings = await generateEmbeddingsBatch(embeddingTexts, {
+        taskType: { kind: "document" },
+        batchSize: EMBEDDING_BATCH_SIZE,
+        onProgress: (done, total) => {
+          console.log(
+            `[indexingService] Embeddings ${done}/${total} for ${documentId}`
+          );
+        },
+      });
+
+      for (let i = 0; i < enrichedAll.length; i += 1) {
+        embeddingMap.set(enrichedAll[i].chunk.chunkIndex, embeddings[i]);
+      }
+    }
+
+    const chunkIdByIndex = new Map<number, string>();
+
+    for (const unchanged of indexPlan.unchanged) {
+      chunkIdByIndex.set(unchanged.chunkIndex, unchanged.vectorId);
+    }
+
+    let processedChunks = indexPlan.unchanged.length;
+    const errors: string[] = [];
+
+    const storeTasks = enrichedAll.filter(({ chunk }) =>
+      embeddingMap.has(chunk.chunkIndex)
+    );
+
+    await processChunksInParallel(
+      storeTasks,
+      env.INDEXING_CONCURRENCY,
+      async ({ chunk, ...enrichment }) => {
+        try {
+          const embedding = embeddingMap.get(chunk.chunkIndex);
+          if (!embedding) return;
+
+          const videoMeta =
+            "videoMetadata" in chunk
+              ? (chunk as IndexableChunk).videoMetadata
+              : undefined;
+
+          const payload = buildStorePayload(
+            document,
+            chunk,
+            { chunk, ...enrichment },
+            embedding,
+            videoMeta
+          );
+
+          const existingVectorId = (chunk as SemanticChunk & { existingVectorId?: string })
+            .existingVectorId;
+
+          let vectorId: string;
+          if (existingVectorId && env.ENABLE_INCREMENTAL_INDEXING) {
+            await vectorStore.updateVector(existingVectorId, payload);
+            vectorId = existingVectorId;
+          } else {
+            vectorId = await vectorStore.storeVector(payload);
+          }
+
+          chunkIdByIndex.set(chunk.chunkIndex, vectorId);
+          processedChunks += 1;
+        } catch (chunkErr) {
+          const message =
+            chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+          errors.push(`chunk ${chunk.chunkIndex}: ${message}`);
+          console.error(
+            `[indexingService] Chunk ${chunk.chunkIndex} failed for ${documentId}:`,
+            chunkErr
+          );
+        }
+      }
+    );
+
     // Link parentChunkId after all chunks are stored
-    for (const { chunk } of enriched) {
+    for (const chunk of semanticChunks) {
       if (chunk.parentChunkIndex === undefined) continue;
 
       const childId = chunkIdByIndex.get(chunk.chunkIndex);
@@ -301,26 +407,37 @@ export async function runIndexingForDocument(
       }
     }
 
+    // Knowledge graph
+    if (isDocumentIntelligenceEnabled() && intelligence) {
+      const graphData = buildKnowledgeGraphData(
+        documentId,
+        userId,
+        document.title,
+        intelligence.chunks,
+        intelligence.entities,
+        intelligence.relationships
+      );
+
+      await persistKnowledgeGraph(
+        documentId,
+        userId,
+        graphData.nodes,
+        graphData.edges
+      );
+    }
+
     if (processedChunks === 0) {
       document.indexStatus = "failed";
       document.indexError = errors.join("; ") || "All chunks failed to index";
       await document.save();
-<<<<<<< HEAD
-=======
-      await syncVideoStatusAfterIndexing(
-        document,
-        0,
-        true,
-        document.indexError
-      );
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+      await syncVideoStatusAfterIndexing(document, 0, true, document.indexError);
       return;
     }
 
     document.indexStatus = "indexed";
     document.indexedAt = new Date();
     document.chunkCount = processedChunks;
-    document.embeddingModel = env.MISTRAL_EMBEDDING_MODEL;
+    document.embeddingModel = embeddingModel;
     document.indexError =
       errors.length > 0
         ? `Partial index: ${errors.length} chunk(s) failed`
@@ -331,8 +448,20 @@ export async function runIndexingForDocument(
 
     invalidateSummaryCache(documentId);
 
+    // Index validation
+    if (env.ENABLE_INDEX_VALIDATION) {
+      const report = await validateDocumentIndex(documentId, userId);
+      if (!report.valid) {
+        console.warn(
+          `[indexingService] Validation issues for ${documentId}:`,
+          report.issues.filter((i) => i.severity === "error").length,
+          "errors"
+        );
+      }
+    }
+
     console.log(
-      `[indexingService] Indexed ${processedChunks}/${topicChunks.length} topic chunks: ${documentId}`
+      `[indexingService] Indexed ${processedChunks}/${semanticChunks.length} chunks (${indexPlan.unchanged.length} reused): ${documentId}`
     );
   } catch (err) {
     console.error(`[indexingService] Indexing failed for ${documentId}:`, err);
@@ -364,6 +493,10 @@ export async function runReindexForDocument(
     }
 
     await vectorStore.deleteVectorsByDocument(
+      documentId,
+      document.userId.toString()
+    );
+    await deleteKnowledgeGraph(
       documentId,
       document.userId.toString()
     );
@@ -444,4 +577,7 @@ export async function deleteDocumentIndex(
   userId: string
 ): Promise<void> {
   await vectorStore.deleteVectorsByDocument(documentId, userId);
+  await deleteKnowledgeGraph(documentId, userId);
 }
+
+export { validateDocumentIndex } from "./indexing/indexValidationService";

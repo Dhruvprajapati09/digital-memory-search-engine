@@ -103,7 +103,7 @@ export async function generateAnswer(
     };
   }
 
-  const { text: context, chunks } = buildContext(rawChunks);
+  const { text: context, chunks } = await buildContext(userId, rawChunks);
   const sources = buildSourcesFromChunks(chunks);
   const chunkDetails = buildChunkDetails(chunks);
 

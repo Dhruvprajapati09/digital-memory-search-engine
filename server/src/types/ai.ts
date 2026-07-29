@@ -11,31 +11,20 @@ export interface ChatCompletionOptions {
   model?: string;
   temperature?: number;
   maxTokens?: number;
-<<<<<<< HEAD
-=======
   /** Abort signal for timeout handling */
   signal?: AbortSignal;
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
-}
-
-export interface ChatCompletionResult {
-  answer: string;
-  model: string;
-<<<<<<< HEAD
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-=======
-  usage?: TokenUsage;
 }
 
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
+}
+
+export interface ChatCompletionResult {
+  answer: string;
+  model: string;
+  usage?: TokenUsage;
 }
 
 export interface EmbeddingTaskType {
@@ -49,8 +38,6 @@ export interface QueryEmbeddingTaskType {
 }
 
 export type EmbeddingInputType = EmbeddingTaskType | QueryEmbeddingTaskType;
-<<<<<<< HEAD
-=======
 
 /** POST /api/ai/ask request body */
 export interface AskRequest {
@@ -134,4 +121,3 @@ export interface BuiltContext {
   chunks: import("./chat").RetrievedChunk[];
   estimatedTokens: number;
 }
->>>>>>> 171e545 (feat: implement advanced RAG search pipeline with AI chat and YouTube ingestion)
