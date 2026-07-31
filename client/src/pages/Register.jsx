@@ -21,9 +21,9 @@ function PasswordStrengthIndicator({ password }) {
     <div className="mb-4 -mt-2" aria-live="polite">
       <div className="flex justify-between items-center mb-1">
         <span className="text-xs text-text-muted">Password strength</span>
-        <span className="text-xs font-medium text-gray-700">{strength.label}</span>
+        <span className="text-xs font-medium text-text">{strength.label}</span>
       </div>
-      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-border rounded-md overflow-hidden">
         <div
           className={`h-full ${strength.color} transition-all duration-300`}
           style={{ width: strength.width }}
@@ -88,88 +88,99 @@ function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-      <Card className="w-full max-w-md" as="section" aria-labelledby="register-heading">
-        <h1 id="register-heading" className="text-2xl font-bold text-gray-900 mb-2">
-          Create your account
-        </h1>
-        <p className="text-sm text-text-muted mb-6">
-          Start building your digital memory library
-        </p>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md page-enter">
+        <div className="mb-8 text-center">
+          <p className="font-display text-4xl sm:text-5xl font-semibold tracking-tight text-text">
+            Memory Engine
+          </p>
+          <p className="mt-3 text-sm text-text-muted max-w-sm mx-auto">
+            Build a library you can search forever.
+          </p>
+        </div>
 
-        {formError && (
-          <div
-            role="alert"
-            className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200"
-          >
-            {formError}
-          </div>
-        )}
+        <Card as="section" aria-labelledby="register-heading">
+          <h1 id="register-heading" className="text-xl font-semibold text-text mb-1">
+            Create your account
+          </h1>
+          <p className="text-sm text-text-muted mb-6">
+            Start building your digital memory library
+          </p>
 
-        <form onSubmit={handleSubmit} noValidate>
-          <Input
-            label="Full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Jane Doe"
-            error={errors.name}
-            autoComplete="name"
-            required
-          />
-          <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            error={errors.email}
-            autoComplete="email"
-            required
-          />
-          <Input
-            label="Password"
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            error={errors.password}
-            autoComplete="new-password"
-            required
-            rightElement={
-              <button
-                type="button"
-                onClick={() => setShowPassword((s) => !s)}
-                className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
-            }
-          />
-          <PasswordStrengthIndicator password={password} />
-          <Input
-            label="Confirm password"
-            type={showPassword ? 'text' : 'password'}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="••••••••"
-            error={errors.confirmPassword}
-            autoComplete="new-password"
-            required
-          />
+          {formError && (
+            <div
+              role="alert"
+              className="mb-4 p-3 rounded-lg bg-danger/10 text-danger text-sm border border-danger/20"
+            >
+              {formError}
+            </div>
+          )}
 
-          <Button type="submit" className="w-full mt-2" loading={loading}>
-            {loading ? 'Creating account...' : 'Sign up'}
-          </Button>
-        </form>
+          <form onSubmit={handleSubmit} noValidate>
+            <Input
+              label="Full name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Doe"
+              error={errors.name}
+              autoComplete="name"
+              required
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              error={errors.email}
+              autoComplete="email"
+              required
+            />
+            <Input
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              error={errors.password}
+              autoComplete="new-password"
+              required
+              rightElement={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              }
+            />
+            <PasswordStrengthIndicator password={password} />
+            <Input
+              label="Confirm password"
+              type={showPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              error={errors.confirmPassword}
+              autoComplete="new-password"
+              required
+            />
 
-        <p className="text-sm text-text-muted mt-6 text-center">
-          Already have an account?{' '}
-          <Link to="/login" className="text-primary-600 font-medium hover:underline">
-            Log in
-          </Link>
-        </p>
-      </Card>
+            <Button type="submit" className="w-full mt-2" loading={loading}>
+              {loading ? 'Creating account...' : 'Sign up'}
+            </Button>
+          </form>
+
+          <p className="text-sm text-text-muted mt-6 text-center">
+            Already have an account?{' '}
+            <Link to="/login" className="text-primary-600 font-medium hover:underline">
+              Log in
+            </Link>
+          </p>
+        </Card>
+      </div>
     </div>
   )
 }

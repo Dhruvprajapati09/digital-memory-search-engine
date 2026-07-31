@@ -30,12 +30,12 @@ function SearchBar({
         onChange={onChange}
         placeholder={placeholder}
         className={cn(
-          'w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl bg-white',
+          'w-full pl-10 pr-4 py-2.5 border border-border rounded-xl bg-surface text-text placeholder:text-text-muted/60',
           'focus:outline-none focus:ring-2 focus:ring-primary-500',
         )}
       />
       <span
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+        className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
         aria-hidden="true"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -48,7 +48,7 @@ function SearchBar({
         </svg>
       </span>
       {loading && (
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-text-muted">
           Searching...
         </span>
       )}

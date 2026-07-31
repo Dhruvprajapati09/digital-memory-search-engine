@@ -6,7 +6,7 @@ function Navbar({ onMenuClick, onToggleCollapse, collapsed }) {
   const { user, logout } = useAuth()
 
   return (
-    <header className="h-16 border-b border-border bg-surface flex items-center justify-between px-4 shrink-0">
+    <header className="h-16 border-b border-border bg-surface/95 backdrop-blur-sm flex items-center justify-between px-4 shrink-0 z-10">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -30,10 +30,14 @@ function Navbar({ onMenuClick, onToggleCollapse, collapsed }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16" />
           </svg>
         </Button>
-        <span className="font-bold text-lg text-gray-900">MemoryEngine</span>
+        <span className="font-display font-semibold text-xl tracking-tight text-text">
+          Memory Engine
+        </span>
       </div>
       <div className="flex items-center gap-3">
-        <span className="hidden sm:block text-sm text-text-muted">{user?.name || user?.email}</span>
+        <span className="hidden sm:block text-sm text-text-muted">
+          {user?.name || user?.email}
+        </span>
         <Avatar name={user?.name || user?.email} size="sm" />
         <Button variant="ghost" size="sm" onClick={logout} aria-label="Log out">
           Log out

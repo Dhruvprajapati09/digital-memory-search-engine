@@ -27,7 +27,7 @@ function SearchHistoryPanel({ onSelect }: SearchHistoryProps) {
   return (
     <section aria-label="Recent searches" className="mb-6">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold text-gray-800">Recent Searches</h2>
+        <h2 className="text-sm font-semibold text-text">Recent Searches</h2>
         <Button
           variant="ghost"
           size="sm"
@@ -42,7 +42,7 @@ function SearchHistoryPanel({ onSelect }: SearchHistoryProps) {
       <ul className="flex flex-wrap gap-2">
         {history.map((item) => (
           <li key={item.id}>
-            <div className="inline-flex items-center gap-1 pl-3 pr-1 py-1.5 rounded-full bg-gray-100 text-sm text-gray-700">
+            <div className="inline-flex items-center gap-1 pl-3 pr-1 py-1.5 rounded-md border border-border bg-surface text-sm text-text">
               <button
                 type="button"
                 onClick={() => onSelect(item.query)}
@@ -54,7 +54,7 @@ function SearchHistoryPanel({ onSelect }: SearchHistoryProps) {
                 type="button"
                 onClick={() => deleteItem.mutate(item.id)}
                 disabled={deleteItem.isPending}
-                className="p-1 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                className="p-1 rounded-md hover:bg-border text-text-muted hover:text-text"
                 aria-label={`Remove "${item.query}" from history`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

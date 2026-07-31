@@ -23,6 +23,8 @@ export interface Document {
   mimeType?: string
   noteContent?: string
   extractedText?: string
+  extractedPages?: Array<{ pageNumber: number; text: string }>
+  totalPages?: number
   extractionStatus?: ExtractionStatus
   extractionError?: string | null
   status?: ExtractionStatus
@@ -50,6 +52,10 @@ export interface Chunk {
   tokenCount: number
   vectorId: string
   embeddingModel: string
+  pageNumber?: number
+  pageRange?: { start: number; end: number }
+  pageOffset?: number
+  sourcePage?: number
   metadata?: Record<string, unknown>
   createdAt: string
 }

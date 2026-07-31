@@ -43,7 +43,7 @@ function TypeIcon({ type }: { type: DocumentType }) {
 
   if (type === 'pdf') {
     return (
-      <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
       </svg>
     )
@@ -68,7 +68,7 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
 
   return (
     <Card className="flex flex-col sm:flex-row gap-4">
-      <div className="shrink-0 flex items-center justify-center w-full sm:w-24 h-24 bg-gray-50 rounded-lg border border-border overflow-hidden">
+      <div className="shrink-0 flex items-center justify-center w-full sm:w-24 h-24 bg-background rounded-lg border border-border overflow-hidden">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -85,7 +85,7 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
           <div>
             <Link
               to={`/dashboard/documents/${document.id}`}
-              className="font-semibold text-gray-900 hover:text-primary-700 truncate block"
+              className="font-semibold text-text hover:text-primary-700 truncate block"
             >
               {document.title}
             </Link>
@@ -127,17 +127,17 @@ function DocumentCard({ document, onDelete }: DocumentCardProps) {
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <div>
             <dt className="text-text-muted">Uploaded</dt>
-            <dd className="text-gray-800">{formatDate(document.createdAt)}</dd>
+            <dd className="text-text">{formatDate(document.createdAt)}</dd>
           </div>
           <div>
             <dt className="text-text-muted">File size</dt>
-            <dd className="text-gray-800">{formatFileSize(document.fileSize)}</dd>
+            <dd className="text-text">{formatFileSize(document.fileSize)}</dd>
           </div>
         </dl>
 
         {previewText && (
           <div className="mt-3">
-            <p className="text-sm text-gray-700 line-clamp-3">
+            <p className="text-sm text-text line-clamp-3">
               {previewText.length > 200
                 ? `${previewText.slice(0, 200)}...`
                 : previewText}

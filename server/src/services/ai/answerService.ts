@@ -110,7 +110,9 @@ export async function generateAnswer(
   let completion;
 
   try {
-    completion = await generateChatCompletion(buildAnswerMessages(question, context));
+    completion = await generateChatCompletion(
+      buildAnswerMessages(question, context, request.priorMessages)
+    );
   } catch (err) {
     throw mapServiceError(err);
   }

@@ -1,6 +1,7 @@
 import type { VectorSearchResult, VectorMetadata } from "../types/embedding";
 import type { RankedDocumentGroup, RankedChunkHit } from "../types/search";
 import type { FusedSearchHit } from "./search/hybridSearchService";
+import { env } from "../config/env";
 
 /** Weights for composite chunk-level ranking */
 const WEIGHTS = {
@@ -16,11 +17,16 @@ const WEIGHTS = {
 } as const;
 
 const MAX_CHUNK_BONUS = 5;
+const DUPLICATE_SIGNATURE_TERMS = 40;
 
 export interface DocumentMetaForRanking {
   title: string;
   type: string;
   createdAt: Date;
+  originalFileName?: string;
+  storedFileName?: string;
+  filePath?: string;
+  mimeType?: string;
 }
 
 export function tokenizeQuery(query: string): string[] {
@@ -46,6 +52,292 @@ export function extractPhrases(query: string): string[] {
   }
 
   return phrases.filter(Boolean);
+}
+
+function normalizeForPrecision(text: string | undefined): string {
+  return (text ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[^\w\s+#.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildPrecisionTerms(
+  normalizedQuery: string,
+  keywords?: string[],
+  entities?: string[]
+): string[] {
+  const terms = new Set<string>();
+
+  for (const keyword of keywords ?? []) {
+    const normalized = normalizeForPrecision(keyword);
+    if (normalized.length >= 2) terms.add(normalized);
+  }
+
+  for (const entity of entities ?? []) {
+    for (const token of tokenizeQuery(entity)) {
+      terms.add(token);
+    }
+  }
+
+  if (terms.size === 0) {
+    for (const token of tokenizeQuery(normalizedQuery)) {
+      terms.add(token);
+    }
+  }
+
+  return [...terms].slice(0, 12);
+}
+
+function computeTermOverlap(text: string | undefined, terms: string[]): number {
+  if (terms.length === 0) return 0;
+
+  const normalized = normalizeForPrecision(text);
+  if (!normalized) return 0;
+
+  let matches = 0;
+  for (const term of terms) {
+    if (normalized.includes(term)) {
+      matches += 1;
+    }
+  }
+
+  return matches / terms.length;
+}
+
+function hasExactPhraseMatch(
+  text: string | undefined,
+  normalizedQuery: string,
+  terms: string[]
+): boolean {
+  const normalizedText = normalizeForPrecision(text);
+  if (!normalizedText) return false;
+
+  const normalizedPhrase = normalizeForPrecision(normalizedQuery);
+  const keywordPhrase = terms.join(" ");
+
+  return (
+    (normalizedPhrase.length >= 6 && normalizedText.includes(normalizedPhrase)) ||
+    (keywordPhrase.length >= 6 && normalizedText.includes(keywordPhrase))
+  );
+}
+
+function buildMetadataText(hit: RankedChunkHit, documentTitle?: string): string {
+  return [
+    documentTitle,
+    hit.metadata.documentName as string | undefined,
+    hit.title,
+    hit.topic,
+    hit.subtopic,
+    hit.summary,
+    ...(hit.sectionPath ?? []),
+    ...(hit.keywords ?? []),
+    ...(hit.tags ?? []),
+    hit.metadata.chapter as string | undefined,
+    hit.metadata.section as string | undefined,
+    hit.metadata.heading as string | undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function buildHeadingText(hit: RankedChunkHit): string {
+  return [
+    hit.title,
+    hit.topic,
+    hit.subtopic,
+    ...(hit.sectionPath ?? []),
+    hit.metadata.heading as string | undefined,
+    hit.metadata.section as string | undefined,
+    hit.metadata.chapter as string | undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(tokenizeQuery(normalizeForPrecision(text).replace(/[-.]/g, " ")));
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection += 1;
+  }
+
+  return intersection / (a.size + b.size - intersection);
+}
+
+function duplicateSignature(hit: RankedChunkHit): Set<string> {
+  return tokenSet(
+    [
+      hit.metadata.documentId,
+      hit.metadata.pageNumber,
+      hit.title,
+      hit.topic,
+      hit.text.split(/\s+/).slice(0, DUPLICATE_SIGNATURE_TERMS).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+export function buildMatchReasons(hit: RankedChunkHit): string[] {
+  const reasons: string[] = [];
+
+  if (
+    hit.vectorScore >= env.PRECISION_STRONG_VECTOR_SCORE ||
+    (hit.crossEncoderScore ?? 0) >= env.PRECISION_STRONG_VECTOR_SCORE
+  ) {
+    reasons.push("High semantic similarity");
+  }
+
+  if (hit.documentTitleScore >= 0.5) {
+    reasons.push("Document title matched the query");
+  }
+
+  if (hit.titleScore > 0 || hit.topicScore > 0) {
+    reasons.push("Heading or topic matched the query");
+  }
+
+  if (hit.keywordScore > 0 || hit.matchedKeywords.length > 0) {
+    reasons.push("Contains matching keywords");
+  }
+
+  if (hit.metadataScore > 0) {
+    reasons.push("Metadata matched the query");
+  }
+
+  if (hit.phraseScore > 0) {
+    reasons.push("Contains an exact query phrase");
+  }
+
+  if ((hit.graphScore ?? 0) > 0) {
+    reasons.push("Connected knowledge graph context matched");
+  }
+
+  return reasons.length > 0 ? reasons : ["Ranked as a relevant semantic match"];
+}
+
+export interface PrecisionFilterOptions {
+  normalizedQuery: string;
+  keywords?: string[];
+  entities?: string[];
+  documentMeta: Map<string, DocumentMetaForRanking>;
+  minVectorScore?: number;
+  strongVectorScore?: number;
+  minKeywordOverlap?: number;
+  minMetadataOverlap?: number;
+  minTitleOverlap?: number;
+  dedupeSimilarity?: number;
+}
+
+export function passesPrecisionGate(
+  hit: RankedChunkHit,
+  options: PrecisionFilterOptions
+): boolean {
+  const terms = buildPrecisionTerms(
+    options.normalizedQuery,
+    options.keywords,
+    options.entities
+  );
+  const docMeta = options.documentMeta.get(hit.documentId);
+  const documentTitle =
+    docMeta?.title ?? (hit.metadata.documentTitle as string | undefined);
+  const documentName =
+    docMeta?.originalFileName ??
+    (hit.metadata.documentName as string | undefined) ??
+    documentTitle;
+
+  const minVectorScore =
+    options.minVectorScore ?? env.PRECISION_MIN_VECTOR_SCORE;
+  const strongVectorScore =
+    options.strongVectorScore ?? env.PRECISION_STRONG_VECTOR_SCORE;
+  const minKeywordOverlap =
+    options.minKeywordOverlap ?? env.PRECISION_MIN_KEYWORD_OVERLAP;
+  const minMetadataOverlap =
+    options.minMetadataOverlap ?? env.PRECISION_MIN_METADATA_OVERLAP;
+  const minTitleOverlap =
+    options.minTitleOverlap ?? env.PRECISION_MIN_TITLE_OVERLAP;
+
+  const titleText = [documentTitle, documentName].filter(Boolean).join(" ");
+  const metadataText = buildMetadataText(hit, documentTitle);
+  const headingText = buildHeadingText(hit);
+  const contentText = [hit.text, hit.contentPreview].filter(Boolean).join(" ");
+
+  const titleOverlap = computeTermOverlap(titleText, terms);
+  const metadataOverlap = computeTermOverlap(metadataText, terms);
+  const headingOverlap = computeTermOverlap(headingText, terms);
+  const keywordOverlap = computeTermOverlap(contentText, terms);
+
+  const exactTitleMatch = hasExactPhraseMatch(
+    titleText,
+    options.normalizedQuery,
+    terms
+  );
+  const exactContentMatch = hasExactPhraseMatch(
+    contentText,
+    options.normalizedQuery,
+    terms
+  );
+
+  const titleStrong = exactTitleMatch || titleOverlap >= minTitleOverlap;
+  const metadataStrong =
+    metadataOverlap >= minMetadataOverlap || headingOverlap >= minMetadataOverlap;
+  const keywordStrong = keywordOverlap >= minKeywordOverlap || exactContentMatch;
+  const semanticStrong =
+    hit.vectorScore >= strongVectorScore ||
+    (hit.crossEncoderScore ?? 0) >= strongVectorScore;
+  const semanticSupported =
+    hit.vectorScore >= minVectorScore &&
+    (titleOverlap > 0 ||
+      metadataOverlap > 0 ||
+      headingOverlap > 0 ||
+      keywordOverlap > 0 ||
+      hit.keywordScore > 0);
+
+  return titleStrong || metadataStrong || keywordStrong || semanticStrong || semanticSupported;
+}
+
+export function applyPrecisionFilters(
+  chunks: RankedChunkHit[],
+  options: PrecisionFilterOptions
+): RankedChunkHit[] {
+  if (!env.ENABLE_PRECISION_FILTER || chunks.length === 0) {
+    return chunks;
+  }
+
+  const dedupeSimilarity =
+    options.dedupeSimilarity ?? env.PRECISION_DEDUPE_SIMILARITY;
+  const accepted: RankedChunkHit[] = [];
+  const signaturesByLocation = new Map<string, Set<string>[]>();
+
+  for (const chunk of chunks) {
+    if (!passesPrecisionGate(chunk, options)) continue;
+
+    const locationKey = [
+      chunk.documentId,
+      chunk.pageNumber ?? chunk.metadata.pageNumber ?? "unknown",
+      chunk.title ?? chunk.topic ?? "chunk",
+    ].join(":");
+    const signature = duplicateSignature(chunk);
+    const existingSignatures = signaturesByLocation.get(locationKey) ?? [];
+    const duplicate = existingSignatures.some(
+      (existing) => jaccardSimilarity(existing, signature) >= dedupeSimilarity
+    );
+
+    if (duplicate) continue;
+
+    existingSignatures.push(signature);
+    signaturesByLocation.set(locationKey, existingSignatures);
+    accepted.push(chunk);
+  }
+
+  return accepted;
 }
 
 export function computeKeywordScore(text: string, queryTerms: string[]): number {
@@ -292,6 +584,8 @@ function scoreChunkHit(
     graphConfidence: hit.graphConfidence,
     graphMatchedNodes: hit.graphMatchedNodes,
     matchedKeywords,
+    matchReasons: [],
+    pageNumber: hit.metadata.pageNumber as number | undefined,
     timestampFormatted: hit.metadata.timestampFormatted as string | undefined,
     timestampSeconds: hit.metadata.timestampSeconds as number | undefined,
     videoUrl: hit.metadata.videoUrl as string | undefined,
@@ -334,6 +628,46 @@ export function rankDocumentGroups(
   return groupRankedChunksIntoDocuments(scoredChunks, documentMeta);
 }
 
+/** Collapse duplicate chunk hits by vectorId (first / highest-ranked wins). */
+export function dedupeRankedChunksById(
+  chunks: RankedChunkHit[]
+): RankedChunkHit[] {
+  const seen = new Set<string>();
+  const unique: RankedChunkHit[] = [];
+
+  for (const chunk of chunks) {
+    const key = chunk.vectorId || `${chunk.documentId}:${chunk.chunkIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(chunk);
+  }
+
+  return unique;
+}
+
+/** Unique ascending page numbers from matched chunks (skips missing pages). */
+export function collectMatchingPages(
+  chunks: Array<{ pageNumber?: number }>
+): number[] {
+  const pages = new Set<number>();
+
+  for (const chunk of chunks) {
+    if (
+      typeof chunk.pageNumber === "number" &&
+      Number.isFinite(chunk.pageNumber) &&
+      chunk.pageNumber >= 1
+    ) {
+      pages.add(chunk.pageNumber);
+    }
+  }
+
+  return [...pages].sort((a, b) => a - b);
+}
+
+export function roundSearchScore(score: number): number {
+  return Math.round(score * 100) / 100;
+}
+
 /**
  * Group already-ranked chunks by document (for search UI after RetrievalCore).
  */
@@ -373,9 +707,11 @@ export function groupRankedChunksIntoDocuments(
   const ranked: RankedDocumentGroup[] = [];
 
   for (const group of grouped.values()) {
-    const top = group.chunks[0];
+    const meta = documentMeta.get(group.documentId);
+    const chunks = dedupeRankedChunksById(group.chunks);
+    const top = chunks[0];
     const chunkBonus =
-      Math.min(group.chunks.length, MAX_CHUNK_BONUS) / MAX_CHUNK_BONUS;
+      Math.min(chunks.length, MAX_CHUNK_BONUS) / MAX_CHUNK_BONUS;
     const recencyScore = computeRecencyScore(group.createdAt);
 
     ranked.push({
@@ -383,14 +719,27 @@ export function groupRankedChunksIntoDocuments(
       title: group.title,
       type: group.type as RankedDocumentGroup["type"],
       createdAt: group.createdAt,
-      matchedChunks: group.chunks.map((c) => ({
+      matchedChunks: chunks.map((c) => ({
+        chunkId: c.vectorId,
         chunkIndex: c.chunkIndex,
         score: c.finalScore,
+        similarityScore: c.vectorScore,
         text: c.text,
+        chunkText: c.text,
+        preview: c.contentPreview,
+        pageNumber: c.pageNumber,
+        sectionHeading:
+          (c.metadata.heading as string | undefined) ??
+          c.title,
+        chapter: c.metadata.chapter as string | undefined,
         topic: c.topic,
         subtopic: c.subtopic,
         title: c.title,
         sectionPath: c.sectionPath,
+        matchedKeywords: c.matchedKeywords,
+        matchReasons: c.matchReasons?.length
+          ? c.matchReasons
+          : buildMatchReasons(c),
         timestamp: c.timestampFormatted,
         timestampSeconds: c.timestampSeconds,
         videoUrl: c.videoUrl,
@@ -398,10 +747,17 @@ export function groupRankedChunksIntoDocuments(
       vectorScore: top?.vectorScore ?? 0,
       keywordScore: top?.keywordScore ?? 0,
       topicScore: top?.topicScore ?? 0,
-      chunkCount: group.chunks.length,
+      chunkCount: chunks.length,
       finalScore:
         (top?.finalScore ?? 0) + chunkBonus * 0.02 + recencyScore * 0.02,
       bestChunkText: top?.contentPreview ?? top?.text ?? "",
+      pageNumber: top?.pageNumber,
+      fileUrl: chunks[0]?.metadata.fileUrl as string | undefined,
+      chunkId: top?.vectorId,
+      documentName: chunks[0]?.metadata.documentName as string | undefined,
+      originalFileName: meta?.originalFileName,
+      filePath: meta?.filePath,
+      mimeType: meta?.mimeType,
       topTopic: top?.topic,
       topSubtopic: top?.subtopic,
     });

@@ -30,7 +30,7 @@ function SearchResults({
   if (loading) {
     return (
       <div>
-        <p className="text-sm text-text-muted mb-4">Searching your memory...</p>
+        <p className="text-sm text-text-muted mb-4">Searching documents...</p>
         <SearchSkeleton count={3} />
       </div>
     )
@@ -38,7 +38,7 @@ function SearchResults({
 
   if (error) {
     return (
-      <p role="alert" className="text-sm text-red-500">
+      <p role="alert" className="text-sm text-danger">
         {error}
       </p>
     )

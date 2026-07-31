@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import SearchBar from '../components/SearchBar'
 import SearchFilters from '../components/SearchFilters'
 import type { SearchFiltersValue } from '../components/SearchFilters'
+import SearchOptionsPanel from '../components/SearchOptions'
 import SearchResults from '../components/SearchResults'
 import SearchHistoryPanel from '../components/SearchHistory'
 import { useSearchQuery } from '../hooks/useSearch'
-import type { SearchParams } from '../types/search'
+import type { SearchOptions, SearchParams } from '../types/search'
 
 const DEBOUNCE_MS = 400
 
@@ -13,6 +14,12 @@ function SearchPage() {
   const [inputValue, setInputValue] = useState('')
   const [submittedQuery, setSubmittedQuery] = useState('')
   const [filters, setFilters] = useState<SearchFiltersValue>({})
+  const [options, setOptions] = useState<SearchOptions>({
+    matchMode: 'phrase',
+    caseSensitive: false,
+    wholeWord: false,
+    prefix: false,
+  })
   const [page, setPage] = useState(1)
   const [searched, setSearched] = useState(false)
 
@@ -24,8 +31,9 @@ function SearchPage() {
       page,
       limit: 20,
       ...filters,
+      ...options,
     }
-  }, [submittedQuery, page, filters])
+  }, [submittedQuery, page, filters, options])
 
   const { data, isFetching, error } = useSearchQuery(searchParams, searched)
 
@@ -47,7 +55,6 @@ function SearchPage() {
     setPage(1)
   }
 
-  // Debounced search while typing (optional live search after first submit)
   useEffect(() => {
     if (!searched || !inputValue.trim()) return
 
@@ -61,18 +68,20 @@ function SearchPage() {
     return () => window.clearTimeout(timer)
   }, [inputValue, searched, submittedQuery])
 
-  // Re-run search when filters change
   useEffect(() => {
     if (searched && submittedQuery) {
       setPage(1)
     }
-  }, [filters, searched, submittedQuery])
+  }, [filters, options, searched, submittedQuery])
 
   return (
     <div>
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Search</h1>
+      <h1 className="text-2xl sm:text-3xl font-semibold text-text mb-2">
+        Document Search
+      </h1>
       <p className="text-sm text-text-muted mb-6">
-        Use natural language to find anything in your memory library.
+        Find exact text across every uploaded document — like Ctrl+F for your
+        entire library.
       </p>
 
       <SearchBar
@@ -87,12 +96,16 @@ function SearchPage() {
       <SearchFilters
         value={filters}
         onChange={setFilters}
+        className="max-w-3xl mb-3"
+      />
+
+      <SearchOptionsPanel
+        value={options}
+        onChange={setOptions}
         className="max-w-3xl mb-6"
       />
 
-      {!searched && (
-        <SearchHistoryPanel onSelect={runSearch} />
-      )}
+      {!searched && <SearchHistoryPanel onSelect={runSearch} />}
 
       <SearchResults
         results={data?.results ?? []}

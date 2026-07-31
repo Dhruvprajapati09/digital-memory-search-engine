@@ -5,6 +5,7 @@ import { vectorStore } from "../vectorStoreService";
 import { fuseSearchResults } from "../search/hybridSearchService";
 import {
   rankRankedChunks,
+  applyPrecisionFilters,
   type DocumentMetaForRanking,
 } from "../rankingService";
 import { env } from "../../config/env";
@@ -204,7 +205,7 @@ async function loadDocumentMetaForRanking(
     _id: { $in: documentIds },
     userId,
   })
-    .select("_id title type createdAt")
+    .select("_id title type createdAt originalFileName storedFileName filePath mimeType")
     .lean();
 
   const map = new Map<string, DocumentMetaForRanking>();
@@ -214,6 +215,10 @@ async function loadDocumentMetaForRanking(
       title: doc.title,
       type: doc.type,
       createdAt: doc.createdAt,
+      originalFileName: doc.originalFileName,
+      storedFileName: doc.storedFileName,
+      filePath: doc.filePath,
+      mimeType: doc.mimeType,
     });
   }
 
@@ -358,7 +363,14 @@ export async function retrieve(
     documentMeta,
   });
 
-  const chunks = rerankResult.chunks.slice(0, limit);
+  const preciseChunks = applyPrecisionFilters(rerankResult.chunks, {
+    normalizedQuery,
+    keywords: queryAnalysis.keywords,
+    entities: queryAnalysis.entities,
+    documentMeta,
+  });
+
+  const chunks = preciseChunks.slice(0, limit);
 
   return {
     normalizedQuery,
@@ -383,6 +395,10 @@ export async function loadDocumentMetaForSearch(
       videoThumbnail?: string;
       videoUrl?: string;
       youtubeVideoId?: string;
+      originalFileName?: string;
+      storedFileName?: string;
+      filePath?: string;
+      mimeType?: string;
     }
   >
 > {
@@ -395,7 +411,7 @@ export async function loadDocumentMetaForSearch(
     userId,
   })
     .select(
-      "_id title type createdAt videoChannel videoThumbnail videoUrl youtubeVideoId"
+      "_id title type createdAt originalFileName storedFileName filePath mimeType videoChannel videoThumbnail videoUrl youtubeVideoId"
     )
     .lean();
 
@@ -418,6 +434,10 @@ export async function loadDocumentMetaForSearch(
       videoThumbnail: doc.videoThumbnail,
       videoUrl: doc.videoUrl,
       youtubeVideoId: doc.youtubeVideoId,
+      originalFileName: doc.originalFileName,
+      storedFileName: doc.storedFileName,
+      filePath: doc.filePath,
+      mimeType: doc.mimeType,
     });
   }
 

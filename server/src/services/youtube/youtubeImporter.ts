@@ -10,6 +10,7 @@ import {
   runIndexingForDocument,
   queueIndexing,
 } from "../indexingService";
+import { upsertPageIndexForDocument } from "../documentSearch/pageIndexWriter";
 import { formatDurationLabel } from "../../utils/timestamp";
 import type {
   YouTubeImportResponse,
@@ -232,6 +233,12 @@ export async function importYouTubeVideo(
   }
 
   const documentId = document._id.toString();
+
+  try {
+    await upsertPageIndexForDocument(document);
+  } catch (err) {
+    console.error(`Failed to write PageIndex for video document ${documentId}:`, err);
+  }
 
   if (options?.waitForIndex !== false) {
     await runIndexingForDocument(documentId);

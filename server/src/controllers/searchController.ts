@@ -46,6 +46,10 @@ export const searchHandler = asyncHandler(
       dateTo: req.query.dateTo ? String(req.query.dateTo) : undefined,
       topic: req.query.topic ? String(req.query.topic) : undefined,
       tag: req.query.tag ? String(req.query.tag) : undefined,
+      caseSensitive: req.query.caseSensitive as string | undefined,
+      wholeWord: req.query.wholeWord as string | undefined,
+      prefix: req.query.prefix as string | undefined,
+      matchMode: req.query.matchMode as SearchRequest["matchMode"],
     };
 
     const result = await searchDocuments(req.user._id.toString(), params);

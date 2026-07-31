@@ -39,7 +39,7 @@ function ExtractedTextViewer({
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="text-lg font-semibold text-gray-900">Extracted Text</h2>
+        <h2 className="text-lg font-semibold text-text">Extracted Text</h2>
         <StatusBadge status={status} />
       </div>
 
@@ -51,10 +51,10 @@ function ExtractedTextViewer({
       )}
 
       {status === 'failed' && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-4">
-          <p className="text-sm font-medium text-red-800">Extraction failed</p>
+        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 mb-4">
+          <p className="text-sm font-medium text-danger">Extraction failed</p>
           {error && (
-            <p className="text-sm text-red-600 mt-1">{error}</p>
+            <p className="text-sm text-danger mt-1">{error}</p>
           )}
           {onReprocess && (
             <Button
@@ -71,7 +71,7 @@ function ExtractedTextViewer({
 
       {status === 'completed' && text && (
         <div
-          className="max-h-96 overflow-y-auto rounded-lg border border-border bg-gray-50 p-4 font-mono text-sm text-gray-800 whitespace-pre-wrap break-words"
+          className="max-h-96 overflow-y-auto rounded-lg border border-border bg-background p-4 font-mono text-sm text-text whitespace-pre-wrap break-words"
           role="region"
           aria-label="Extracted text content"
         >

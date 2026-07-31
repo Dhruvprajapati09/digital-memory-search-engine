@@ -13,6 +13,7 @@ const Upload = lazy(() => import('../pages/DocumentsPage'))
 const DocumentDetail = lazy(() => import('../pages/DocumentDetailPage'))
 const DocumentIndex = lazy(() => import('../pages/DocumentIndexPage'))
 const Settings = lazy(() => import('../pages/Settings'))
+const Assistant = lazy(() => import('../pages/AssistantPage'))
 const NotFound = lazy(() => import('../pages/NotFound'))
 
 function PageLoader() {
@@ -42,6 +43,7 @@ export default function AppRoutes() {
           <Route index element={<Dashboard />} />
           <Route path="memories" element={<Memories />} />
           <Route path="search" element={<Search />} />
+          <Route path="assistant" element={<Assistant />} />
           <Route path="upload" element={<Upload />} />
           <Route path="documents/:id" element={<DocumentDetail />} />
           <Route path="documents/:id/index" element={<DocumentIndex />} />

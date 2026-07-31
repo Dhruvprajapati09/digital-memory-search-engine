@@ -15,6 +15,10 @@ import {
   deleteDocumentIndex,
 } from "../services/indexingService";
 import { cleanText } from "../services/textCleaner";
+import {
+  deletePageIndexForDocument,
+  upsertPageIndexForDocument,
+} from "../services/documentSearch/pageIndexWriter";
 
 /** Shape documents consistently for API list responses */
 function formatDocument(doc: IDocument) {
@@ -29,6 +33,8 @@ function formatDocument(doc: IDocument) {
     mimeType: doc.mimeType,
     noteContent: doc.noteContent,
     extractedText: doc.extractedText,
+    extractedPages: doc.extractedPages,
+    totalPages: doc.totalPages,
     extractionStatus: doc.extractionStatus,
     extractionError: doc.extractionError,
     indexStatus: doc.indexStatus,
@@ -64,6 +70,10 @@ function formatChunk(chunk: {
   tokenCount: number;
   vectorId: string;
   embeddingModel: string;
+  pageNumber?: number;
+  pageRange?: { start: number; end: number };
+  pageOffset?: number;
+  sourcePage?: number;
   metadata?: Record<string, unknown>;
   createdAt: Date;
 }) {
@@ -76,6 +86,10 @@ function formatChunk(chunk: {
     tokenCount: chunk.tokenCount,
     vectorId: chunk.vectorId,
     embeddingModel: chunk.embeddingModel,
+    pageNumber: chunk.pageNumber,
+    pageRange: chunk.pageRange,
+    pageOffset: chunk.pageOffset,
+    sourcePage: chunk.sourcePage,
     metadata: chunk.metadata ?? {},
     createdAt: chunk.createdAt,
   };
@@ -195,6 +209,7 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
     indexStatus: "pending",
   });
 
+  await upsertPageIndexForDocument(document);
   queueIndexing(document._id.toString());
 
   res.status(201).json({
@@ -302,12 +317,17 @@ export const reprocessDocument = asyncHandler(
     if (document.type === "note") {
       const cleaned = cleanText(document.noteContent ?? "");
       document.extractedText = cleaned;
+      document.extractedPages = undefined;
+      document.totalPages = undefined;
       document.extractionStatus = cleaned ? "completed" : "failed";
       document.extractionError = cleaned ? null : "Note content is empty";
       await document.save();
 
       if (cleaned) {
+        await upsertPageIndexForDocument(document);
         queueIndexing(documentId);
+      } else {
+        await deletePageIndexForDocument(documentId);
       }
     } else {
       document.extractionStatus = "processing";
@@ -342,6 +362,7 @@ export const deleteDocument = asyncHandler(
     const document = await getOwnedDocument(req, documentId);
 
     await deleteDocumentIndex(documentId, document.userId.toString());
+    await deletePageIndexForDocument(documentId);
 
     if (document.storedFileName) {
       const absolutePath = resolveSafeUploadPath(document.storedFileName);

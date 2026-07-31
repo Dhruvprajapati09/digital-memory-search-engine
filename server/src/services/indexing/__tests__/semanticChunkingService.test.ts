@@ -73,4 +73,52 @@ describe("semanticChunkingService", () => {
 
     expect(chunks.some((c) => c.pageNumber !== undefined)).toBe(true);
   });
+
+  it("does not create chunks that span multiple pages", () => {
+    const structure: DocumentStructureElement = {
+      type: "section",
+      title: "Operating Systems",
+      content:
+        "Deadlock is a condition where processes wait.\n" +
+        "Mutual exclusion is one deadlock condition.\n" +
+        "Paging maps virtual memory to frames.\n" +
+        "Page replacement selects a victim frame.",
+      level: 1,
+      chapter: "Operating Systems",
+      section: "Concurrency and Memory",
+      heading: "Concurrency and Memory",
+      lineStart: 0,
+      lineEnd: 3,
+      children: [],
+    };
+
+    const pages = [
+      {
+        pageNumber: 87,
+        text:
+          "Deadlock is a condition where processes wait.\n" +
+          "Mutual exclusion is one deadlock condition.",
+        lineStart: 0,
+        lineEnd: 1,
+      },
+      {
+        pageNumber: 88,
+        text:
+          "Paging maps virtual memory to frames.\n" +
+          "Page replacement selects a victim frame.",
+        lineStart: 2,
+        lineEnd: 3,
+      },
+    ];
+
+    const chunks = createSemanticChunks(structure, pages, {
+      documentTitle: "Operating Systems",
+      maxTokens: 200,
+    });
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks.map((chunk) => chunk.pageNumber)).toEqual([87, 88]);
+    expect(chunks.every((chunk) => chunk.pageRange?.start === chunk.pageRange?.end))
+      .toBe(true);
+  });
 });

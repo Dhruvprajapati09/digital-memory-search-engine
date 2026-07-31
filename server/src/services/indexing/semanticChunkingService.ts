@@ -75,6 +75,83 @@ function buildSectionPath(element: DocumentStructureElement): string[] {
   return path;
 }
 
+function splitSectionIntoPageParts(
+  section: DocumentStructureElement,
+  pages: PageContent[]
+): Array<{
+  text: string;
+  pageNumber?: number;
+  pageRange?: { start: number; end: number };
+  pageOffset?: number;
+}> {
+  const content = section.content.trim();
+  if (!content) return [];
+
+  const sectionRange =
+    section.pageRange ?? resolvePageRange(pages, section.lineStart, section.lineEnd);
+
+  if (
+    pages.length === 0 ||
+    !sectionRange ||
+    sectionRange.start === sectionRange.end
+  ) {
+    const pageInfo = resolvePageForLine(pages, section.lineStart);
+    const pageNumber = section.pageNumber ?? pageInfo?.pageNumber;
+    return [
+      {
+        text: content,
+        pageNumber,
+        pageRange: pageNumber ? { start: pageNumber, end: pageNumber } : sectionRange,
+        pageOffset: pageInfo?.pageOffset,
+      },
+    ];
+  }
+
+  const contentLines = content.split(/\r?\n/);
+  const parts: Array<{
+    text: string;
+    pageNumber?: number;
+    pageRange?: { start: number; end: number };
+    pageOffset?: number;
+  }> = [];
+
+  for (const page of pages) {
+    const overlapStart = Math.max(section.lineStart, page.lineStart);
+    const overlapEnd = Math.min(section.lineEnd, page.lineEnd);
+
+    if (overlapStart > overlapEnd) continue;
+
+    const relativeStart = Math.max(0, overlapStart - section.lineStart);
+    const relativeEnd = Math.min(
+      contentLines.length - 1,
+      overlapEnd - section.lineStart
+    );
+    const pageText = contentLines
+      .slice(relativeStart, relativeEnd + 1)
+      .join("\n")
+      .trim();
+
+    if (!pageText) continue;
+
+    parts.push({
+      text: pageText,
+      pageNumber: page.pageNumber,
+      pageRange: { start: page.pageNumber, end: page.pageNumber },
+      pageOffset: overlapStart - page.lineStart,
+    });
+  }
+
+  return parts.length > 0
+    ? parts
+    : [
+        {
+          text: content,
+          pageNumber: sectionRange.start,
+          pageRange: { start: sectionRange.start, end: sectionRange.start },
+        },
+      ];
+}
+
 /**
  * Create semantic chunks preferring heading/section/topic boundaries.
  * Only splits by token limit when a section exceeds maxTokens.
@@ -122,50 +199,51 @@ export function createSemanticChunks(
       ? indexByPath.get(parentPath)
       : undefined;
 
-    const pageInfo = resolvePageForLine(pages, section.lineStart);
-    const pageRange =
-      section.pageRange ??
-      resolvePageRange(pages, section.lineStart, section.lineEnd);
+    const pageParts = splitSectionIntoPageParts(section, pages);
 
-    const textParts = splitByTokenLimit(
-      buildChunkText(title, content),
-      maxTokens
-    );
+    for (const pagePart of pageParts) {
+      const textParts = splitByTokenLimit(
+        buildChunkText(title, pagePart.text),
+        maxTokens
+      );
 
-    for (let partIndex = 0; partIndex < textParts.length; partIndex += 1) {
-      const partText = textParts[partIndex];
-      const tokens = calculateTokens(partText);
+      for (let partIndex = 0; partIndex < textParts.length; partIndex += 1) {
+        const partText = textParts[partIndex];
+        const tokens = calculateTokens(partText);
 
-      if (tokens < minTokens && textParts.length === 1) continue;
+        if (tokens < minTokens && textParts.length === 1) continue;
 
-      const partTitle =
-        textParts.length > 1 ? `${title} (part ${partIndex + 1})` : title;
+        const partTitle =
+          textParts.length > 1 ? `${title} (part ${partIndex + 1})` : title;
 
-      const chunk: SemanticChunk = {
-        chunkIndex,
-        text: partText,
-        title: partTitle,
-        topic,
-        subtopic,
-        sectionPath: sectionPath.length > 0 ? sectionPath : [documentTitle],
-        level,
-        parentChunkIndex,
-        tokenCount: tokens,
-        contentPreview: buildContentPreview(partText),
-        chapter: section.chapter,
-        section: section.section,
-        heading: section.heading ?? title,
-        parentHeading: section.parentHeading,
-        pageNumber: section.pageNumber ?? pageInfo?.pageNumber,
-        pageRange,
-        pageOffset: pageInfo?.pageOffset,
-        sourcePage: section.pageNumber ?? pageInfo?.pageNumber,
-        elementType: section.type,
-      };
+        const chunk: SemanticChunk = {
+          chunkIndex,
+          text: partText,
+          title: partTitle,
+          topic,
+          subtopic,
+          sectionPath: sectionPath.length > 0 ? sectionPath : [documentTitle],
+          level,
+          parentChunkIndex,
+          tokenCount: tokens,
+          contentPreview: buildContentPreview(partText),
+          chapter: section.chapter,
+          section: section.section,
+          heading: section.heading ?? title,
+          parentHeading: section.parentHeading,
+          pageNumber: pagePart.pageNumber,
+          pageRange: pagePart.pageRange,
+          pageOffset: pagePart.pageOffset,
+          sourcePage: pagePart.pageNumber,
+          elementType: section.type,
+        };
 
-      chunks.push(chunk);
-      indexByPath.set(sectionPath.join("/"), chunkIndex);
-      chunkIndex += 1;
+        chunks.push(chunk);
+        if (!indexByPath.has(sectionPath.join("/"))) {
+          indexByPath.set(sectionPath.join("/"), chunkIndex);
+        }
+        chunkIndex += 1;
+      }
     }
   }
 

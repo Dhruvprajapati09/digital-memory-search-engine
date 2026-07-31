@@ -57,7 +57,7 @@ function VideoForm({ onCreated, onError, onSuccess }: VideoFormProps) {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold text-gray-900 mb-1">Save YouTube Video</h2>
+      <h2 className="text-lg font-semibold text-text mb-1">Save YouTube Video</h2>
       <p className="text-sm text-text-muted mb-4">
         Paste a YouTube URL to import its transcript into your searchable memory.
       </p>
@@ -72,10 +72,10 @@ function VideoForm({ onCreated, onError, onSuccess }: VideoFormProps) {
         />
 
         {error && (
-          <p role="alert" className="text-sm text-red-500 mb-3">{error}</p>
+          <p role="alert" className="text-sm text-danger mb-3">{error}</p>
         )}
         {success && (
-          <p role="status" className="text-sm text-green-600 mb-3">{success}</p>
+          <p role="status" className="text-sm text-success mb-3">{success}</p>
         )}
 
         <Button type="submit" loading={loading}>
