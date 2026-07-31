@@ -26,7 +26,7 @@ function Modal({ isOpen, onClose, title, children, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-text/40"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -36,10 +36,10 @@ function Modal({ isOpen, onClose, title, children, footer }) {
         aria-modal="true"
         aria-labelledby="modal-title"
         tabIndex={-1}
-        className="relative bg-white rounded-xl shadow-md w-full max-w-md p-6 z-10"
+        className="relative bg-surface rounded-xl shadow-md border border-border w-full max-w-md p-6 z-10"
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
+          <h2 id="modal-title" className="text-lg font-semibold text-text font-display">
             {title}
           </h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close dialog">

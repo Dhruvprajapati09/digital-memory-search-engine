@@ -5,6 +5,7 @@ import { extractPdfText } from "./pdfExtractor";
 import { extractImageText } from "./ocrExtractor";
 import { cleanText } from "./textCleaner";
 import { queueIndexing } from "./indexingService";
+import { upsertPageIndexForDocument } from "./documentSearch/pageIndexWriter";
 import type { ExtractionResult } from "../types/extraction.types";
 
 /** Resolve a stored filename to a safe absolute path inside uploads/ */
@@ -56,7 +57,19 @@ export async function extractTextFromDocument(
     return result;
   }
 
-  return { success: true, text: cleanText(result.text) };
+  const cleanedPages = result.pages
+    ?.map((page) => ({
+      pageNumber: page.pageNumber,
+      text: cleanText(page.text),
+    }))
+    .filter((page) => page.text.length > 0);
+
+  return {
+    success: true,
+    text: cleanText(result.text),
+    pages: cleanedPages,
+    totalPages: result.totalPages ?? cleanedPages?.length,
+  };
 }
 
 /**
@@ -83,9 +96,20 @@ export async function runExtractionForDocument(
 
     if (result.success && result.text) {
       document.extractedText = result.text;
+      document.extractedPages = result.pages;
+      document.totalPages = result.totalPages;
       document.extractionStatus = "completed";
       document.extractionError = null;
       await document.save();
+
+      try {
+        await upsertPageIndexForDocument(document);
+      } catch (indexErr) {
+        console.error(
+          `Failed to write PageIndex for document ${documentId}:`,
+          indexErr
+        );
+      }
 
       if (!options?.skipAutoIndex) {
         queueIndexing(documentId);

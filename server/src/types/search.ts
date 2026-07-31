@@ -13,6 +13,7 @@ export interface SearchFilter {
 }
 
 export type SearchMode = "documents" | "chunks";
+export type DocumentMatchMode = "phrase" | "keyword";
 
 export interface SearchRequest {
   q: string;
@@ -25,30 +26,57 @@ export interface SearchRequest {
   dateTo?: string;
   topic?: string;
   tag?: string;
+  /** Module 1 Ctrl+F options */
+  caseSensitive?: boolean | string;
+  wholeWord?: boolean | string;
+  prefix?: boolean | string;
+  matchMode?: DocumentMatchMode;
 }
 
 export interface MatchedChunk {
+  chunkId?: string;
   chunkIndex: number;
   score: number;
+  similarityScore?: number;
   text?: string;
+  chunkText?: string;
+  preview?: string;
+  pageNumber?: number;
+  sectionHeading?: string;
+  chapter?: string;
   topic?: string;
   subtopic?: string;
   title?: string;
   sectionPath?: string[];
+  matchedKeywords?: string[];
+  matchReasons?: string[];
   /** Video transcript timestamp (formatted MM:SS) */
   timestamp?: string;
   timestampSeconds?: number;
   videoUrl?: string;
 }
 
+/** Document-level search hit for Module 1 pure text search. */
 export interface SearchResult {
   documentId: string;
+  documentName?: string;
   title: string;
   type: DocumentType;
+  /** Non-AI relevance from occurrence density */
   score: number;
+  relevanceScore?: number;
+  /** @deprecated Prefer relevanceScore; kept for UI compatibility */
+  similarity?: number;
   preview: string;
+  bestMatchPage?: number;
+  matchingPages?: number[];
+  occurrenceCount?: number;
+  exactMatch?: boolean;
+  matchType?: "phrase" | "terms" | "semantic";
+  /** Exact matched substring (source casing) for future PDF highlight */
+  matchQuote?: string;
+  fileUrl?: string;
   highlightTerms: string[];
-  matchedChunks: MatchedChunk[];
   createdAt: string;
   topTopic?: string;
   topSubtopic?: string;
@@ -59,6 +87,10 @@ export interface SearchResult {
   timestampSeconds?: number;
   videoUrl?: string;
   youtubeVideoId?: string;
+  originalFileName?: string;
+  storedFileName?: string;
+  filePath?: string;
+  mimeType?: string;
 }
 
 export interface ChunkScoreDebug {
@@ -113,14 +145,22 @@ export interface ChunkSearchResult {
   documentType: DocumentType;
   chunkIndex: number;
   score: number;
+  similarityScore?: number;
   confidenceScore: number;
+  chunkText?: string;
   preview: string;
+  pageNumber?: number;
+  sectionHeading?: string;
+  chapter?: string;
+  documentName?: string;
+  fileUrl?: string;
   highlightTerms: string[];
   topic?: string;
   subtopic?: string;
   title?: string;
   sectionPath?: string[];
   matchedKeywords: string[];
+  matchReasons?: string[];
   timestamp?: string;
   timestampSeconds?: number;
   videoUrl?: string;
@@ -199,6 +239,8 @@ export interface RankedChunkHit {
   }>;
   recencyScore?: number;
   matchedKeywords: string[];
+  matchReasons?: string[];
+  pageNumber?: number;
   timestampFormatted?: string;
   timestampSeconds?: number;
   videoUrl?: string;
@@ -218,6 +260,13 @@ export interface RankedDocumentGroup {
   chunkCount: number;
   finalScore: number;
   bestChunkText: string;
+  pageNumber?: number;
+  fileUrl?: string;
+  chunkId?: string;
+  documentName?: string;
+  originalFileName?: string;
+  filePath?: string;
+  mimeType?: string;
   topTopic?: string;
   topSubtopic?: string;
 }

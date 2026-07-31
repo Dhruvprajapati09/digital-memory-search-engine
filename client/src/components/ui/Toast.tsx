@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { cn } from '../../utils/cn'
 
 export interface ToastMessage {
@@ -26,10 +26,10 @@ function Toast({ toast, onDismiss }: ToastProps) {
     <div
       role="status"
       className={cn(
-        'fixed bottom-6 right-6 z-50 max-w-sm rounded-lg px-4 py-3 shadow-lg border text-sm font-medium',
+        'fixed bottom-6 right-6 z-50 max-w-sm rounded-lg px-4 py-3 shadow-md border text-sm font-medium',
         toast.type === 'success'
-          ? 'bg-green-50 text-green-800 border-green-200'
-          : 'bg-red-50 text-red-800 border-red-200',
+          ? 'bg-surface text-success border-success/30'
+          : 'bg-surface text-danger border-danger/30',
       )}
     >
       {toast.message}

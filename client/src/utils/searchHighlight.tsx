@@ -36,7 +36,7 @@ export function highlightText(
       return (
         <mark
           key={`${part}-${index}`}
-          className="bg-amber-100 text-amber-900 rounded px-0.5"
+          className="bg-warning/20 text-text rounded px-0.5"
         >
           {part}
         </mark>
@@ -52,7 +52,13 @@ function escapeRegExp(value: string): string {
 }
 
 export function formatMatchScore(score: number): string {
-  return `${Math.round(score * 100)}% Match`
+  const normalized = Math.max(0, Math.min(score, 1))
+  return `${Math.round(normalized * 100)}% Match`
+}
+
+export function formatOccurrenceCount(count: number): string {
+  const safe = Math.max(0, Math.floor(count))
+  return `${safe} occurrence${safe === 1 ? '' : 's'}`
 }
 
 export function formatDocumentType(type: string): string {

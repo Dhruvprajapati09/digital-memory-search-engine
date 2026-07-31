@@ -60,7 +60,7 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold text-gray-900 mb-1">Upload File</h2>
+      <h2 className="text-lg font-semibold text-text mb-1">Upload File</h2>
       <p className="text-sm text-text-muted mb-4">
         Upload PDF or image files (max 10 MB).
       </p>
@@ -76,10 +76,10 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
         <div className="mb-4">
           <label
             htmlFor="file-upload"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-text mb-1"
           >
             File
-            <span className="text-red-500 ml-1" aria-hidden="true">*</span>
+            <span className="text-danger ml-1" aria-hidden="true">*</span>
           </label>
           <input
             ref={fileInputRef}
@@ -87,7 +87,7 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
             onChange={handleFileChange}
-            className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+            className="block w-full text-sm text-text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
           />
           {file && (
             <p className="text-xs text-text-muted mt-1">
@@ -97,10 +97,10 @@ function UploadForm({ onUploaded, onError, onSuccess }: UploadFormProps) {
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-red-500 mb-3">{error}</p>
+          <p role="alert" className="text-sm text-danger mb-3">{error}</p>
         )}
         {success && (
-          <p role="status" className="text-sm text-green-600 mb-3">{success}</p>
+          <p role="status" className="text-sm text-success mb-3">{success}</p>
         )}
 
         <Button type="submit" loading={loading} disabled={!file}>

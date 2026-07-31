@@ -17,7 +17,7 @@ function Avatar({ name, src, size = 'md', className = '' }) {
   return (
     <div
       className={cn(
-        'rounded-full bg-primary-100 text-primary-700 font-semibold flex items-center justify-center overflow-hidden shrink-0',
+        'rounded-full bg-primary-50 text-primary-700 font-semibold flex items-center justify-center overflow-hidden shrink-0 border border-border',
         sizes[size],
         className,
       )}

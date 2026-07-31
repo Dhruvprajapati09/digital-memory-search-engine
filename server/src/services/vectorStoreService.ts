@@ -32,6 +32,10 @@ function mapChunkToSearchResult(
     chunkIndex: chunk.chunkIndex as number,
     type: (storedMeta.type as string) ?? (chunk.sourceType as string),
     documentTitle: storedMeta.documentTitle as string | undefined,
+    documentName: storedMeta.documentName as string | undefined,
+    originalFileName: storedMeta.originalFileName as string | undefined,
+    filePath: storedMeta.filePath as string | undefined,
+    fileUrl: storedMeta.fileUrl as string | undefined,
     topic: (chunk.topic as string) ?? (storedMeta.topic as string | undefined),
     subtopic: chunk.subtopic as string | undefined,
     title: chunk.title as string,
@@ -46,6 +50,18 @@ function mapChunkToSearchResult(
     parentChunkId: chunk.parentChunkId
       ? String(chunk.parentChunkId)
       : undefined,
+    pageNumber:
+      (chunk.pageNumber as number | undefined) ??
+      (storedMeta.pageNumber as number | undefined),
+    pageRange:
+      (chunk.pageRange as { start: number; end: number } | undefined) ??
+      (storedMeta.pageRange as { start: number; end: number } | undefined),
+    pageOffset:
+      (chunk.pageOffset as number | undefined) ??
+      (storedMeta.pageOffset as number | undefined),
+    sourcePage:
+      (chunk.sourcePage as number | undefined) ??
+      (storedMeta.sourcePage as number | undefined),
     youtubeVideoId: storedMeta.youtubeVideoId as string | undefined,
     videoUrl: storedMeta.videoUrl as string | undefined,
     channel: storedMeta.channel as string | undefined,
@@ -218,6 +234,8 @@ class PineconeVectorStore implements IVectorStore {
         parentHeading: payload.parentHeading,
         pageNumber: payload.pageNumber,
         pageRange: payload.pageRange,
+        pageOffset: payload.pageOffset,
+        sourcePage: payload.sourcePage,
         entities: payload.entities,
         relationships: payload.relationships,
         language: payload.language,

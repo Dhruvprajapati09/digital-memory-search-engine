@@ -52,7 +52,7 @@ function SearchFilters({ value, onChange, className = '' }: SearchFiltersProps) 
               type: (e.target.value || undefined) as DocumentType | undefined,
             })
           }
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-primary-500"
+          className="rounded-lg border border-border px-3 py-2 text-sm bg-surface focus:ring-2 focus:ring-primary-500"
         >
           {TYPE_OPTIONS.map((opt) => (
             <option key={opt.label} value={opt.value}>
@@ -77,7 +77,7 @@ function SearchFilters({ value, onChange, className = '' }: SearchFiltersProps) 
               dateTo: e.target.value === 'custom' ? value.dateTo : undefined,
             })
           }
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-primary-500"
+          className="rounded-lg border border-border px-3 py-2 text-sm bg-surface focus:ring-2 focus:ring-primary-500"
         >
           {DATE_OPTIONS.map((opt) => (
             <option key={opt.label} value={opt.value}>
@@ -100,7 +100,7 @@ function SearchFilters({ value, onChange, className = '' }: SearchFiltersProps) 
               onChange={(e) =>
                 onChange({ ...value, dateFrom: e.target.value || undefined })
               }
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-primary-500"
+              className="rounded-lg border border-border px-3 py-2 text-sm bg-surface focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -114,7 +114,7 @@ function SearchFilters({ value, onChange, className = '' }: SearchFiltersProps) 
               onChange={(e) =>
                 onChange({ ...value, dateTo: e.target.value || undefined })
               }
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-primary-500"
+              className="rounded-lg border border-border px-3 py-2 text-sm bg-surface focus:ring-2 focus:ring-primary-500"
             />
           </div>
         </>

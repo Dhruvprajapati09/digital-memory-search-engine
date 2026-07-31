@@ -5,7 +5,7 @@ import Card from '../components/ui/Card'
 function Upload() {
   return (
     <div>
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Upload</h1>
+      <h1 className="text-2xl sm:text-3xl font-semibold text-text mb-2">Upload</h1>
       <p className="text-sm text-text-muted mb-6">
         Add notes, documents, links, or videos to your memory library.
       </p>

@@ -50,6 +50,27 @@ export const env = {
   RETRIEVAL_TOP_K: parseInt(process.env.RETRIEVAL_TOP_K || "60", 10),
   SEARCH_TOP_K: parseInt(process.env.SEARCH_TOP_K || "20", 10),
   MIN_VECTOR_SCORE: parseFloat(process.env.MIN_VECTOR_SCORE || "0.08"),
+  /** Precision gates: avoid filling search/RAG results with weakly related chunks */
+  ENABLE_PRECISION_FILTER:
+    process.env.ENABLE_PRECISION_FILTER !== "false",
+  PRECISION_MIN_VECTOR_SCORE: parseFloat(
+    process.env.PRECISION_MIN_VECTOR_SCORE || "0.72"
+  ),
+  PRECISION_STRONG_VECTOR_SCORE: parseFloat(
+    process.env.PRECISION_STRONG_VECTOR_SCORE || "0.86"
+  ),
+  PRECISION_MIN_KEYWORD_OVERLAP: parseFloat(
+    process.env.PRECISION_MIN_KEYWORD_OVERLAP || "0.5"
+  ),
+  PRECISION_MIN_METADATA_OVERLAP: parseFloat(
+    process.env.PRECISION_MIN_METADATA_OVERLAP || "0.34"
+  ),
+  PRECISION_MIN_TITLE_OVERLAP: parseFloat(
+    process.env.PRECISION_MIN_TITLE_OVERLAP || "0.5"
+  ),
+  PRECISION_DEDUPE_SIMILARITY: parseFloat(
+    process.env.PRECISION_DEDUPE_SIMILARITY || "0.82"
+  ),
   RRF_K: parseInt(process.env.RRF_K || "60", 10),
   RRF_WEIGHT_VECTOR: parseFloat(process.env.RRF_WEIGHT_VECTOR || "0.6"),
   RRF_WEIGHT_KEYWORD: parseFloat(process.env.RRF_WEIGHT_KEYWORD || "0.4"),

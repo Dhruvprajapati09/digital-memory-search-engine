@@ -18,7 +18,7 @@ function SearchBar({
   onChange,
   onSubmit,
   onClear,
-  placeholder = 'What do you remember about...',
+  placeholder = 'Search for exact text across your documents...',
   loading = false,
   autoFocus = true,
   className = '',
@@ -43,7 +43,7 @@ function SearchBar({
     >
       <div className="relative flex-1">
         <label htmlFor={id} className="sr-only">
-          Search your memories
+          Search documents
         </label>
         <input
           ref={inputRef}
@@ -54,13 +54,13 @@ function SearchBar({
           placeholder={placeholder}
           disabled={loading}
           className={cn(
-            'w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl bg-white',
+            'w-full pl-10 pr-10 py-2.5 border border-border rounded-xl bg-surface text-text placeholder:text-text-muted/60',
             'focus:outline-none focus:ring-2 focus:ring-primary-500',
             'disabled:opacity-60',
           )}
         />
         <span
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
           aria-hidden="true"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -76,7 +76,7 @@ function SearchBar({
           <button
             type="button"
             onClick={onClear}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text"
             aria-label="Clear search"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

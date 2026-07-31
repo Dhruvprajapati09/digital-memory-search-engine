@@ -4,6 +4,7 @@ import {
   removeExtraSpaces,
   removeRepeatedNewLines,
   normalizeUnicode,
+  repairWrappedLines,
 } from "../textCleaner";
 
 describe("textCleaner", () => {
@@ -28,5 +29,21 @@ describe("textCleaner", () => {
 
   it("cleanText trims leading and trailing whitespace", () => {
     expect(cleanText("  hello  ")).toBe("hello");
+  });
+
+  it("repairWrappedLines merges wrapped prose but preserves lists", () => {
+    const input = [
+      "Digital Memory Search Engine is an AI-powered",
+      "platform for semantic search.",
+      "",
+      "Advantages",
+      "- Fast retrieval",
+      "- Source citations",
+    ].join("\n");
+
+    expect(repairWrappedLines(input)).toContain(
+      "Digital Memory Search Engine is an AI-powered platform"
+    );
+    expect(repairWrappedLines(input)).toContain("- Fast retrieval\n- Source citations");
   });
 });

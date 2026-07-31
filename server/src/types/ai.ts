@@ -39,12 +39,20 @@ export interface QueryEmbeddingTaskType {
 
 export type EmbeddingInputType = EmbeddingTaskType | QueryEmbeddingTaskType;
 
+/** Prior turn passed into RAG for in-chat context (user/assistant only) */
+export interface PriorChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 /** POST /api/ai/ask request body */
 export interface AskRequest {
   question: string;
   topK?: number;
   /** Limit retrieval to specific documents (optional) */
   documentIds?: string[];
+  /** Recent turns from the current conversation (optional) */
+  priorMessages?: PriorChatMessage[];
 }
 
 /** Source citation attached to every AI answer */

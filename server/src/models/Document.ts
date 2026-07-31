@@ -1,5 +1,8 @@
 import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
-import type { ExtractionStatus } from "../types/extraction.types";
+import type {
+  ExtractionStatus,
+  PageExtractionData,
+} from "../types/extraction.types";
 import type { IndexStatus } from "../types/embedding";
 
 export type DocumentType = "pdf" | "image" | "note" | "video";
@@ -15,6 +18,8 @@ export interface IDocument extends MongooseDocument {
   mimeType?: string;
   noteContent?: string;
   extractedText?: string;
+  extractedPages?: PageExtractionData[];
+  totalPages?: number;
   /** Reference to Video record for YouTube imports */
   videoId?: mongoose.Types.ObjectId;
   youtubeVideoId?: string;
@@ -83,6 +88,19 @@ const documentSchema = new Schema<IDocument>(
     extractedText: {
       type: String,
       trim: true,
+    },
+    extractedPages: {
+      type: [
+        {
+          pageNumber: { type: Number, required: true, min: 1 },
+          text: { type: String, required: true, trim: true },
+        },
+      ],
+      default: undefined,
+    },
+    totalPages: {
+      type: Number,
+      min: 0,
     },
     videoId: {
       type: Schema.Types.ObjectId,

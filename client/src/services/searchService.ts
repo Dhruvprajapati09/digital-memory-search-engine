@@ -49,6 +49,10 @@ function buildSearchQuery(params: SearchParams): string {
   if (params.date) search.set('date', params.date)
   if (params.dateFrom) search.set('dateFrom', params.dateFrom)
   if (params.dateTo) search.set('dateTo', params.dateTo)
+  if (params.caseSensitive) search.set('caseSensitive', 'true')
+  if (params.wholeWord) search.set('wholeWord', 'true')
+  if (params.prefix) search.set('prefix', 'true')
+  if (params.matchMode) search.set('matchMode', params.matchMode)
 
   return search.toString()
 }

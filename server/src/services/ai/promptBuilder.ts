@@ -77,15 +77,38 @@ Answer using only the context above. Cite document names when referencing specif
 
 /**
  * Build the full message array for chat completion.
+ * Optional prior turns (same conversation) are inserted after the system prompt.
  */
 export function buildAnswerMessages(
   question: string,
-  context: string
+  context: string,
+  priorMessages?: Array<{ role: "user" | "assistant"; content: string }>
 ): ChatMessage[] {
-  return [
+  const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt() },
-    { role: "user", content: buildUserPrompt(question, context) },
   ];
+
+  if (priorMessages?.length) {
+    for (const prior of priorMessages) {
+      if (
+        (prior.role === "user" || prior.role === "assistant") &&
+        typeof prior.content === "string" &&
+        prior.content.trim()
+      ) {
+        messages.push({
+          role: prior.role,
+          content: prior.content.trim(),
+        });
+      }
+    }
+  }
+
+  messages.push({
+    role: "user",
+    content: buildUserPrompt(question, context),
+  });
+
+  return messages;
 }
 
 const SUMMARY_SYSTEM_PROMPT = `You are an AI Memory Assistant that summarizes documents from a user's personal knowledge base.

@@ -18,6 +18,10 @@ export interface VectorMetadata {
   chunkIndex: number;
   type: string;
   documentTitle?: string;
+  documentName?: string;
+  originalFileName?: string;
+  filePath?: string;
+  fileUrl?: string;
   topic?: string;
   subtopic?: string;
   title?: string;

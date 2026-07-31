@@ -54,7 +54,7 @@ function NoteForm({ onCreated, onError, onSuccess }: NoteFormProps) {
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold text-gray-900 mb-1">Save Note</h2>
+      <h2 className="text-lg font-semibold text-text mb-1">Save Note</h2>
       <p className="text-sm text-text-muted mb-4">
         Write and save text notes to your document library.
       </p>
@@ -71,10 +71,10 @@ function NoteForm({ onCreated, onError, onSuccess }: NoteFormProps) {
         <div className="mb-4">
           <label
             htmlFor="note-content"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-text mb-1"
           >
             Content
-            <span className="text-red-500 ml-1" aria-hidden="true">*</span>
+            <span className="text-danger ml-1" aria-hidden="true">*</span>
           </label>
           <textarea
             id="note-content"
@@ -83,15 +83,15 @@ function NoteForm({ onCreated, onError, onSuccess }: NoteFormProps) {
             placeholder="Today I learned..."
             rows={5}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text placeholder:text-text-muted/60 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-red-500 mb-3">{error}</p>
+          <p role="alert" className="text-sm text-danger mb-3">{error}</p>
         )}
         {success && (
-          <p role="status" className="text-sm text-green-600 mb-3">{success}</p>
+          <p role="status" className="text-sm text-success mb-3">{success}</p>
         )}
 
         <Button type="submit" loading={loading}>

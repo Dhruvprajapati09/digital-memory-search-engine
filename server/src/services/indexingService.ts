@@ -40,6 +40,37 @@ type IndexableChunk = TopicChunk & {
   videoMetadata?: TimestampedTopicChunk["videoMetadata"];
 };
 
+function chunkPdfPagesByTopics(document: IDocument): SemanticChunk[] {
+  const pages =
+    document.extractedPages?.filter((page) => page.text.trim().length > 0) ??
+    [];
+
+  if (document.type !== "pdf" || pages.length === 0) {
+    return [];
+  }
+
+  const chunks: SemanticChunk[] = [];
+
+  for (const page of pages) {
+    const pageChunks = chunkTextByTopics(page.text, {
+      documentTitle: document.title,
+      maxTokens: env.CHUNK_MAX_TOKENS,
+    });
+
+    for (const chunk of pageChunks) {
+      chunks.push({
+        ...chunk,
+        chunkIndex: chunks.length,
+        pageNumber: page.pageNumber,
+        pageRange: { start: page.pageNumber, end: page.pageNumber },
+        sourcePage: page.pageNumber,
+      });
+    }
+  }
+
+  return chunks;
+}
+
 async function resolveFilePath(document: IDocument): Promise<string | undefined> {
   if (!document.storedFileName) return undefined;
   try {
@@ -88,8 +119,16 @@ async function resolveSemanticChunks(
       sourceType: document.type,
       extractedText,
       filePath,
+    }, {
+      preExtractedPages: document.extractedPages,
+      totalPages: document.totalPages,
     });
     return { chunks: intelligence.chunks, intelligence };
+  }
+
+  const pageAwarePdfChunks = chunkPdfPagesByTopics(document);
+  if (pageAwarePdfChunks.length > 0) {
+    return { chunks: pageAwarePdfChunks };
   }
 
   return {
@@ -130,6 +169,12 @@ function buildStorePayload(
     chunkIndex: chunk.chunkIndex,
     type: document.type,
     documentTitle: document.title,
+    documentName: document.originalFileName ?? document.title,
+    originalFileName: document.originalFileName,
+    filePath: document.filePath,
+    fileUrl: document.storedFileName
+      ? `/uploads/${document.storedFileName}`
+      : undefined,
     topic: enrichment.topic,
     subtopic: enrichment.subtopic,
     title: enrichment.title,

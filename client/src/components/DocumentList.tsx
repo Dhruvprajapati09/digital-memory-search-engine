@@ -70,7 +70,7 @@ function DocumentList({ refreshKey = 0, onToast }: DocumentListProps) {
   if (error) {
     return (
       <div className="text-center py-8">
-        <p className="text-red-500 mb-4" role="alert">{error}</p>
+        <p className="text-danger mb-4" role="alert">{error}</p>
         <Button onClick={loadDocuments}>Retry</Button>
       </div>
     )
@@ -125,7 +125,7 @@ function DocumentList({ refreshKey = 0, onToast }: DocumentListProps) {
           </>
         }
       >
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-text-muted">
           Are you sure you want to delete &quot;{deleteTarget?.title}&quot;?
           This action cannot be undone.
         </p>

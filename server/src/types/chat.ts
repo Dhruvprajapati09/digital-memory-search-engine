@@ -9,6 +9,42 @@ export interface ChatRequest {
   topK?: number;
 }
 
+/** Slim source stored on assistant messages */
+export interface ConversationSourceDto {
+  documentId: string;
+  documentName: string;
+  preview: string;
+  page?: number;
+}
+
+export interface ConversationMessageDto {
+  _id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources: ConversationSourceDto[];
+  noResults: boolean;
+  createdAt: string;
+}
+
+export interface ConversationSummaryDto {
+  _id: string;
+  title: string;
+  updatedAt: string;
+  createdAt?: string;
+}
+
+export interface ConversationDto {
+  _id: string;
+  title: string;
+  messages: ConversationMessageDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AskInConversationRequest {
+  question: string;
+}
+
 export interface ChatSource {
   documentId: string;
   chunkIndex: number;

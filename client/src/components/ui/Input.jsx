@@ -22,10 +22,10 @@ function Input({
   return (
     <div className={cn('mb-4', className)}>
       {label && (
-        <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor={id} className="block text-sm font-medium text-text mb-1">
           {label}
           {required && (
-            <span className="text-red-500 ml-1" aria-hidden="true">
+            <span className="text-danger ml-1" aria-hidden="true">
               *
             </span>
           )}
@@ -43,9 +43,9 @@ function Input({
           aria-invalid={!!error}
           aria-describedby={errorId}
           className={cn(
-            'w-full px-3 py-2 border rounded-lg bg-white transition-colors',
+            'w-full px-3 py-2 border rounded-lg bg-surface text-text placeholder:text-text-muted/60 transition-colors',
             'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500',
-            error ? 'border-red-500' : 'border-gray-300',
+            error ? 'border-danger' : 'border-border',
             rightElement && 'pr-10',
           )}
           {...rest}
@@ -57,7 +57,7 @@ function Input({
         )}
       </div>
       {error && (
-        <p id={errorId} role="alert" className="text-sm text-red-500 mt-1">
+        <p id={errorId} role="alert" className="text-sm text-danger mt-1">
           {error}
         </p>
       )}
