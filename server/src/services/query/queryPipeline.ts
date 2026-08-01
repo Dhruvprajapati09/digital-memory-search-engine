@@ -88,3 +88,42 @@ export function buildRankingQuery(pipeline: QueryPipelineResult): string {
   ]);
   return [...terms].join(" ");
 }
+
+/**
+ * Content-focused query for embedding / keyword / ranking (RAG).
+ * Prefer extracted keywords so NL questions retrieve like keyword searches.
+ * Never returns an empty string.
+ */
+export function buildRetrievalQuery(pipeline: QueryPipelineResult): string {
+  const fromKeywords = pipeline.keywords
+    .map((k) => k.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (fromKeywords) {
+    return fromKeywords;
+  }
+
+  const strippedNormalized = extractKeywords(
+    pipeline.normalized.replace(/[?!.]+$/g, "").trim()
+  )
+    .join(" ")
+    .trim();
+
+  if (strippedNormalized) {
+    return strippedNormalized;
+  }
+
+  const normalized = pipeline.normalized.replace(/[?!.]+$/g, "").trim();
+  if (normalized) {
+    return normalized;
+  }
+
+  const original = pipeline.original.trim();
+  if (original) {
+    return original;
+  }
+
+  return "search";
+}

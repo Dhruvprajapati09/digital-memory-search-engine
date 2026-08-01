@@ -1,5 +1,6 @@
 import type { ChatMessage } from '../../types/chat'
 import SourceList from './SourceList'
+import AssistantAnswer from './AssistantAnswer'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -31,14 +32,20 @@ function MessageList({ messages, asking = false }: MessageListProps) {
             className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] sm:max-w-[75%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap break-words ${
+              className={`max-w-[85%] sm:max-w-[75%] rounded-xl px-4 py-3 text-sm break-words ${
                 isUser
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-600 text-white whitespace-pre-wrap'
                   : 'bg-surface border border-border text-text'
               }`}
             >
-              <p>{message.content}</p>
-              {!isUser ? <SourceList sources={message.sources ?? []} /> : null}
+              {isUser ? (
+                <p>{message.content}</p>
+              ) : (
+                <>
+                  <AssistantAnswer content={message.content} />
+                  <SourceList sources={message.sources ?? []} />
+                </>
+              )}
             </div>
           </div>
         )

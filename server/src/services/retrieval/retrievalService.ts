@@ -11,6 +11,7 @@ import { runQueryPipeline } from "../query/queryPipeline";
 
 /**
  * Retrieval service — query pipeline → RetrievalCore (hybrid + ranking).
+ * Always uses content-focused retrieval query (RAG path only).
  */
 export async function retrieveRelevantChunks(
   options: RetrievalOptions
@@ -21,6 +22,7 @@ export async function retrieveRelevantChunks(
     throw new Error("Retrieval query cannot be empty");
   }
 
+  const startedAt = Date.now();
   const limit = options.limit ?? env.RAG_TOP_K;
   const minVectorScore = options.minScore ?? env.RAG_MIN_SCORE;
 
@@ -42,6 +44,21 @@ export async function retrieveRelevantChunks(
     documentIds: options.documentIds,
     topic: options.topic,
     tags: options.tags,
+    contentFocusedQuery: true,
+  });
+
+  const topScores = result.chunks.slice(0, 5).map((hit) => ({
+    vectorScore: hit.vectorScore,
+    finalScore: hit.finalScore,
+    confidenceScore: hit.confidenceScore,
+  }));
+
+  console.log("[rag/retrieve]", {
+    originalQuestion: trimmed,
+    retrievalQuery: result.retrievalQuery,
+    chunkCount: result.chunks.length,
+    topScores,
+    elapsedMs: Date.now() - startedAt,
   });
 
   const chunks: RetrievedChunk[] = result.chunks.map((hit) => ({

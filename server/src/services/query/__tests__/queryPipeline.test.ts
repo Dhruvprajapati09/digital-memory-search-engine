@@ -5,6 +5,22 @@ import { extractKeywords } from "../keywordExtractionService";
 import { extractEntities } from "../entityExtractionService";
 import { expandQueryTerms } from "../queryExpansionService";
 import { detectMetadataHints } from "../metadataHintService";
+import { buildRetrievalQuery } from "../queryPipeline";
+import type { QueryPipelineResult } from "../../../types/query";
+
+function pipelineStub(
+  partial: Partial<QueryPipelineResult> &
+    Pick<QueryPipelineResult, "original" | "normalized" | "keywords">
+): QueryPipelineResult {
+  return {
+    intent: "search",
+    confidence: 1,
+    entities: [],
+    expandedTerms: [],
+    metadataHints: {},
+    ...partial,
+  };
+}
 
 describe("queryNormalizer", () => {
   it("lowercases and collapses whitespace", () => {
@@ -47,6 +63,66 @@ describe("keywordExtractionService", () => {
     expect(keywords).toContain("mongodb");
     expect(keywords).toContain("index");
     expect(keywords).not.toContain("how");
+  });
+});
+
+describe("buildRetrievalQuery", () => {
+  it("maps NL questions to content keywords", () => {
+    const normalized = "what is markov model?";
+    const keywords = extractKeywords(normalized);
+    const q = buildRetrievalQuery(
+      pipelineStub({
+        original: "What is Markov Model?",
+        normalized,
+        keywords,
+      })
+    );
+    expect(q).toContain("markov");
+    expect(q).toContain("model");
+    expect(q).not.toContain("what");
+    expect(q).not.toContain("?");
+  });
+
+  it("maps explain/tell me about phrasing to keywords", () => {
+    const cases = [
+      "Explain Binary Search Tree",
+      "Tell me about React Hooks",
+      "Define Markov Model",
+    ];
+    for (const original of cases) {
+      const { normalized } = normalizeQueryText(original);
+      const keywords = extractKeywords(normalized);
+      const q = buildRetrievalQuery(
+        pipelineStub({ original, normalized, keywords })
+      );
+      expect(q.length).toBeGreaterThan(0);
+      expect(q).not.toMatch(/^(explain|tell|define|about|what|is)\b/);
+    }
+  });
+
+  it("keeps bare keyword queries usable", () => {
+    const { normalized } = normalizeQueryText("Markov Model");
+    const keywords = extractKeywords(normalized);
+    const q = buildRetrievalQuery(
+      pipelineStub({
+        original: "Markov Model",
+        normalized,
+        keywords,
+      })
+    );
+    expect(q).toContain("markov");
+    expect(q).toContain("model");
+  });
+
+  it("never returns empty — falls back to normalized/original", () => {
+    const q = buildRetrievalQuery(
+      pipelineStub({
+        original: "???",
+        normalized: "",
+        keywords: [],
+      })
+    );
+    expect(q.trim().length).toBeGreaterThan(0);
   });
 });
 

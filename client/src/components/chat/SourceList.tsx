@@ -1,11 +1,22 @@
+import { useState } from 'react'
 import type { ChatSource } from '../../types/chat'
+import { prepareSources } from '../../utils/chatSources'
+
+const INITIAL_VISIBLE = 3
 
 interface SourceListProps {
   sources: ChatSource[]
 }
 
 function SourceList({ sources }: SourceListProps) {
-  if (!sources.length) return null
+  const [expanded, setExpanded] = useState(false)
+  const prepared = prepareSources(sources)
+
+  if (!prepared.length) return null
+
+  const hasMore = prepared.length > INITIAL_VISIBLE
+  const visible = expanded ? prepared : prepared.slice(0, INITIAL_VISIBLE)
+  const remaining = prepared.length - INITIAL_VISIBLE
 
   return (
     <div className="mt-3 space-y-2">
@@ -13,7 +24,7 @@ function SourceList({ sources }: SourceListProps) {
         Sources
       </p>
       <ul className="space-y-2">
-        {sources.map((source, index) => (
+        {visible.map((source, index) => (
           <li
             key={`${source.documentId}-${index}`}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -35,6 +46,16 @@ function SourceList({ sources }: SourceListProps) {
           </li>
         ))}
       </ul>
+
+      {hasMore ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="text-xs font-medium text-primary-600 hover:text-primary-700"
+        >
+          {expanded ? 'Show Less' : `View More (${remaining})`}
+        </button>
+      ) : null}
     </div>
   )
 }
