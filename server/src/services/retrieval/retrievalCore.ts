@@ -11,7 +11,11 @@ import {
 import { env } from "../../config/env";
 import type { DateFilterPreset, RankedChunkHit } from "../../types/search";
 import type { QueryPipelineResult } from "../../types/query";
-import { runQueryPipeline, buildRankingQuery, buildRetrievalQuery } from "../query/queryPipeline";
+import {
+  runQueryPipeline,
+  buildRankingQuery,
+  buildContentFocusedRetrievalTerms,
+} from "../query/queryPipeline";
 import {
   buildExpandedEmbeddingQuery,
   buildExpandedSearchQuery,
@@ -68,6 +72,8 @@ export interface RetrievalCoreResult {
   normalizedQuery: string;
   /** Query used for embed / keyword / rank when contentFocusedQuery is on */
   retrievalQuery: string;
+  /** Content keywords after answer-style stripping (RAG path) */
+  filteredKeywords?: string[];
   queryAnalysis: QueryPipelineResult;
   chunks: RankedChunkHit[];
   queryEmbeddingModel: string;
@@ -281,12 +287,38 @@ export async function retrieve(
     filteredByMetadata
   );
 
+  const contentTerms = options.contentFocusedQuery
+    ? buildContentFocusedRetrievalTerms(queryAnalysis)
+    : null;
+
+  const retrievalQuery = contentTerms
+    ? contentTerms.retrievalQuery
+    : normalizedQuery;
+
+  const retrievalKeywords = contentTerms
+    ? contentTerms.keywords
+    : queryAnalysis.keywords;
+  const retrievalExpanded = contentTerms
+    ? contentTerms.expandedTerms
+    : queryAnalysis.expandedTerms;
+  const retrievalEntities = contentTerms
+    ? contentTerms.entities
+    : queryAnalysis.entities;
+
+  const retrievalAnalysis: QueryPipelineResult = contentTerms
+    ? {
+        ...queryAnalysis,
+        keywords: retrievalKeywords,
+        expandedTerms: retrievalExpanded,
+        entities: retrievalEntities,
+      }
+    : queryAnalysis;
+
   if (documentIds !== undefined && documentIds.length === 0) {
     return {
       normalizedQuery,
-      retrievalQuery: options.contentFocusedQuery
-        ? buildRetrievalQuery(queryAnalysis)
-        : normalizedQuery,
+      retrievalQuery,
+      filteredKeywords: contentTerms?.keywords,
       queryAnalysis,
       chunks: [],
       queryEmbeddingModel: env.MISTRAL_EMBEDDING_MODEL,
@@ -294,24 +326,20 @@ export async function retrieve(
     };
   }
 
-  const retrievalQuery = options.contentFocusedQuery
-    ? buildRetrievalQuery(queryAnalysis)
-    : normalizedQuery;
-
   const keywordQuery = buildExpandedSearchQuery(
     retrievalQuery,
-    queryAnalysis.keywords,
-    queryAnalysis.expandedTerms
+    retrievalKeywords,
+    retrievalExpanded
   );
 
   const embeddingQuery = buildExpandedEmbeddingQuery(
     retrievalQuery,
-    queryAnalysis.keywords,
-    queryAnalysis.expandedTerms
+    retrievalKeywords,
+    retrievalExpanded
   );
 
   const rankingQuery = buildRankingQuery({
-    ...queryAnalysis,
+    ...retrievalAnalysis,
     normalized: retrievalQuery,
   });
 
@@ -335,7 +363,7 @@ export async function retrieve(
     }),
     retrieveGraphChunks({
       userId: options.userId,
-      queryAnalysis,
+      queryAnalysis: retrievalAnalysis,
       documentIds,
       limit: Math.min(candidateLimit, env.GRAPH_RETRIEVAL_CANDIDATES),
       maxDepth: env.GRAPH_RETRIEVAL_MAX_DEPTH,
@@ -383,8 +411,8 @@ export async function retrieve(
 
   const preciseChunks = applyPrecisionFilters(rerankResult.chunks, {
     normalizedQuery: retrievalQuery,
-    keywords: queryAnalysis.keywords,
-    entities: queryAnalysis.entities,
+    keywords: retrievalKeywords,
+    entities: retrievalEntities,
     documentMeta,
     ...(options.contentFocusedQuery
       ? { minVectorScore: env.RAG_PRECISION_MIN_VECTOR_SCORE }
@@ -396,6 +424,7 @@ export async function retrieve(
   return {
     normalizedQuery,
     retrievalQuery,
+    filteredKeywords: contentTerms?.keywords,
     queryAnalysis,
     chunks,
     queryEmbeddingModel: embedding.model,

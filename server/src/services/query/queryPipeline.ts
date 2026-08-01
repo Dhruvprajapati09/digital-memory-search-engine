@@ -7,6 +7,12 @@ import { extractEntities } from "./entityExtractionService";
 import { expandQueryTerms } from "./queryExpansionService";
 import { detectMetadataHints } from "./metadataHintService";
 import { loadUserVocabulary } from "./vocabularyLoader";
+import {
+  filterInstructionTerms,
+  isAnswerStyleToken,
+  stripAnswerStylePhrases,
+  stripAnswerStyleTokensFromText,
+} from "./answerStyleTerms";
 
 export interface QueryPipelineOptions {
   userId?: string;
@@ -89,41 +95,67 @@ export function buildRankingQuery(pipeline: QueryPipelineResult): string {
   return [...terms].join(" ");
 }
 
+export interface ContentFocusedRetrievalTerms {
+  retrievalQuery: string;
+  keywords: string[];
+  expandedTerms: string[];
+  entities: string[];
+}
+
+/**
+ * Build content-only retrieval terms for RAG (instruction words removed).
+ * Keywords are order-preserving and deduped. Never returns an empty retrievalQuery.
+ */
+export function buildContentFocusedRetrievalTerms(
+  pipeline: QueryPipelineResult
+): ContentFocusedRetrievalTerms {
+  const withoutPunct = pipeline.normalized.replace(/[?!.]+$/g, "").trim();
+  const stripped = stripAnswerStylePhrases(withoutPunct);
+
+  let keywords = filterInstructionTerms(extractKeywords(stripped));
+  if (keywords.length === 0) {
+    keywords = filterInstructionTerms(pipeline.keywords);
+  }
+
+  const expandedTerms = filterInstructionTerms(pipeline.expandedTerms);
+
+  const entities = pipeline.entities.filter((entity) => {
+    const trimmed = entity.trim();
+    if (!trimmed) return false;
+    // Keep multi-word content entities; drop pure instruction tokens only
+    if (/\s/.test(trimmed)) return true;
+    return !isAnswerStyleToken(trimmed);
+  });
+
+  let retrievalQuery = keywords.join(" ").trim();
+
+  if (!retrievalQuery) {
+    retrievalQuery = stripAnswerStyleTokensFromText(stripped);
+  }
+  if (!retrievalQuery) {
+    retrievalQuery = stripAnswerStyleTokensFromText(
+      stripAnswerStylePhrases(pipeline.original)
+    );
+  }
+  if (!retrievalQuery) {
+    retrievalQuery = pipeline.original.trim() || pipeline.normalized.trim();
+  }
+  if (!retrievalQuery) {
+    retrievalQuery = "search";
+  }
+
+  return {
+    retrievalQuery,
+    keywords,
+    expandedTerms,
+    entities,
+  };
+}
+
 /**
  * Content-focused query for embedding / keyword / ranking (RAG).
- * Prefer extracted keywords so NL questions retrieve like keyword searches.
  * Never returns an empty string.
  */
 export function buildRetrievalQuery(pipeline: QueryPipelineResult): string {
-  const fromKeywords = pipeline.keywords
-    .map((k) => k.trim())
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  if (fromKeywords) {
-    return fromKeywords;
-  }
-
-  const strippedNormalized = extractKeywords(
-    pipeline.normalized.replace(/[?!.]+$/g, "").trim()
-  )
-    .join(" ")
-    .trim();
-
-  if (strippedNormalized) {
-    return strippedNormalized;
-  }
-
-  const normalized = pipeline.normalized.replace(/[?!.]+$/g, "").trim();
-  if (normalized) {
-    return normalized;
-  }
-
-  const original = pipeline.original.trim();
-  if (original) {
-    return original;
-  }
-
-  return "search";
+  return buildContentFocusedRetrievalTerms(pipeline).retrievalQuery;
 }

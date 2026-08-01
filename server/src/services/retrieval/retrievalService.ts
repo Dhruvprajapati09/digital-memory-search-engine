@@ -8,10 +8,20 @@ import { formatContextText } from "../ai/contextBuilder";
 import { assembleContext } from "../context/contextAssembler";
 import { retrieve } from "./retrievalCore";
 import { runQueryPipeline } from "../query/queryPipeline";
+import { normalizeQueryText } from "../query/queryNormalizer";
+import { loadUserVocabulary } from "../query/vocabularyLoader";
+import {
+  buildSpellingDictionaries,
+  correctQuerySpelling,
+} from "../query/spellCorrectionService";
 
 /**
- * Retrieval service — query pipeline → RetrievalCore (hybrid + ranking).
- * Always uses content-focused retrieval query (RAG path only).
+ * Retrieval service — spell-correct → query pipeline → RetrievalCore.
+ *
+ * Each call is fully request-scoped: local corrected query, fresh
+ * queryAnalysis, and a new retrieve() — never reuse prior queryAnalysis,
+ * noResults, or chunk lists from earlier messages.
+ * Corrected query is for retrieval only; callers keep the original for the LLM.
  */
 export async function retrieveRelevantChunks(
   options: RetrievalOptions
@@ -30,13 +40,25 @@ export async function retrieveRelevantChunks(
     ? env.RETRIEVAL_CANDIDATES
     : Math.max(limit, env.RETRIEVAL_TOP_K);
 
-  const queryAnalysis = await runQueryPipeline(trimmed, {
+  // --- rebuild all retrieval inputs from this request only ---
+  const { normalized } = normalizeQueryText(trimmed);
+  const vocabulary = await loadUserVocabulary(options.userId);
+  const dicts = buildSpellingDictionaries(vocabulary);
+  const { correctedQuery, corrections } = correctQuerySpelling(normalized, {
+    primaryDictionary: dicts.primaryDictionary,
+    fallbackDictionary: dicts.fallbackDictionary,
+    phraseCorrections: dicts.phraseCorrections,
+    minTokenLength: 4,
+  });
+  const queryForRetrieval = correctedQuery || normalized;
+
+  const queryAnalysis = await runQueryPipeline(queryForRetrieval, {
     userId: options.userId,
   });
 
   const result = await retrieve({
     userId: options.userId,
-    query: trimmed,
+    query: queryForRetrieval,
     queryAnalysis,
     limit,
     candidateLimit,
@@ -54,9 +76,14 @@ export async function retrieveRelevantChunks(
   }));
 
   console.log("[rag/retrieve]", {
+    conversationId: options.conversationId ?? null,
     originalQuestion: trimmed,
+    correctedQuery: queryForRetrieval,
+    corrections,
     retrievalQuery: result.retrievalQuery,
+    filteredKeywords: result.filteredKeywords ?? [],
     chunkCount: result.chunks.length,
+    cacheHit: result.graphDebug?.cacheHit ?? false,
     topScores,
     elapsedMs: Date.now() - startedAt,
   });

@@ -53,6 +53,8 @@ export interface AskRequest {
   documentIds?: string[];
   /** Recent turns from the current conversation (optional) */
   priorMessages?: PriorChatMessage[];
+  /** Conversation id for request-scoped debug logs (optional) */
+  conversationId?: string;
 }
 
 /** Source citation attached to every AI answer */

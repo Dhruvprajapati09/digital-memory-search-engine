@@ -22,6 +22,59 @@ import type { AiSource, PriorChatMessage } from "../../types/ai";
 const PRIOR_MESSAGE_LIMIT = 4;
 const TITLE_MAX_LENGTH = 50;
 
+type PriorSourceMessage = Pick<
+  IConversationMessage,
+  "role" | "content" | "noResults"
+>;
+
+/** True when an assistant turn should not be fed back as prior context. */
+function isFailedAssistantPrior(msg: PriorSourceMessage): boolean {
+  if (msg.role !== "assistant") return false;
+  if (msg.noResults) return true;
+  // LLM-echoed canned no-answer is stored with noResults:false when chunks existed
+  return /couldn't find that information/i.test(msg.content);
+}
+
+/**
+ * Build LLM prior turns from conversation history.
+ * Drops failed Q&A pairs (empty retrieval or canned no-answer + preceding user)
+ * so they cannot poison the next ask.
+ */
+export function buildPriorMessagesForAnswer(
+  messages: PriorSourceMessage[],
+  limit = PRIOR_MESSAGE_LIMIT
+): PriorChatMessage[] {
+  const window = messages.slice(-limit);
+  const filtered: PriorSourceMessage[] = [];
+
+  for (let i = 0; i < window.length; i += 1) {
+    const msg = window[i];
+    if (isFailedAssistantPrior(msg)) {
+      // Drop this assistant turn and its preceding user turn if present
+      if (
+        filtered.length > 0 &&
+        filtered[filtered.length - 1]?.role === "user"
+      ) {
+        filtered.pop();
+      }
+      continue;
+    }
+    filtered.push(msg);
+  }
+
+  return filtered
+    .filter(
+      (m) =>
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim()
+    )
+    .map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content.trim(),
+    }));
+}
+
 function toSourceDto(source: IConversationSource): ConversationSourceDto {
   return {
     documentId: source.documentId,
@@ -165,16 +218,29 @@ export async function askInConversation(
     throw new AppError("Conversation not found", 404);
   }
 
-  const priorMessages: PriorChatMessage[] = conversation.messages
-    .slice(-PRIOR_MESSAGE_LIMIT)
-    .map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+  const priorSource = conversation.messages.slice(-PRIOR_MESSAGE_LIMIT);
+  const priorHasNoResults = priorSource.some(
+    (m) => m.role === "assistant" && m.noResults
+  );
+  const priorMessages = buildPriorMessagesForAnswer(conversation.messages);
+
+  console.log("[rag/chat]", {
+    conversationId,
+    priorCount: priorMessages.length,
+    priorHasNoResults,
+    question,
+  });
 
   const answerResult = await generateAnswer(userId, {
     question,
     priorMessages,
+    conversationId,
+  });
+
+  console.log("[rag/chat]", {
+    conversationId,
+    noResults: Boolean(answerResult.noResults),
+    question,
   });
 
   conversation.messages.push({
