@@ -10,7 +10,7 @@ const STOP_WORDS = new Set([
   "why", "how", "all", "each", "few", "more", "most", "other", "some",
   "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too",
   "very", "just", "also", "now", "what", "which", "who", "whom", "find",
-  "show", "tell", "explain", "give", "please",
+  "show", "tell", "explain", "define", "give", "please",
 ]);
 
 /** Simple suffix stemmer for common English endings */

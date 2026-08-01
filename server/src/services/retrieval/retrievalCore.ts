@@ -11,7 +11,7 @@ import {
 import { env } from "../../config/env";
 import type { DateFilterPreset, RankedChunkHit } from "../../types/search";
 import type { QueryPipelineResult } from "../../types/query";
-import { runQueryPipeline, buildRankingQuery } from "../query/queryPipeline";
+import { runQueryPipeline, buildRankingQuery, buildRetrievalQuery } from "../query/queryPipeline";
 import {
   buildExpandedEmbeddingQuery,
   buildExpandedSearchQuery,
@@ -50,6 +50,12 @@ export interface RetrievalCoreOptions {
   /** Pinecone / chunk metadata filters (RAG or search topic/tag) */
   topic?: string;
   tags?: string[];
+  /**
+   * When true (Assistant RAG), embed/search/rank with a content-focused
+   * retrieval query derived from keywords, and use softer precision.
+   * SearchV2 should leave this false/undefined.
+   */
+  contentFocusedQuery?: boolean;
   /** Optional adaptive fusion weights for Search v2 */
   retrievalWeights?: {
     vector?: number;
@@ -60,6 +66,8 @@ export interface RetrievalCoreOptions {
 
 export interface RetrievalCoreResult {
   normalizedQuery: string;
+  /** Query used for embed / keyword / rank when contentFocusedQuery is on */
+  retrievalQuery: string;
   queryAnalysis: QueryPipelineResult;
   chunks: RankedChunkHit[];
   queryEmbeddingModel: string;
@@ -276,6 +284,9 @@ export async function retrieve(
   if (documentIds !== undefined && documentIds.length === 0) {
     return {
       normalizedQuery,
+      retrievalQuery: options.contentFocusedQuery
+        ? buildRetrievalQuery(queryAnalysis)
+        : normalizedQuery,
       queryAnalysis,
       chunks: [],
       queryEmbeddingModel: env.MISTRAL_EMBEDDING_MODEL,
@@ -283,19 +294,26 @@ export async function retrieve(
     };
   }
 
+  const retrievalQuery = options.contentFocusedQuery
+    ? buildRetrievalQuery(queryAnalysis)
+    : normalizedQuery;
+
   const keywordQuery = buildExpandedSearchQuery(
-    normalizedQuery,
+    retrievalQuery,
     queryAnalysis.keywords,
     queryAnalysis.expandedTerms
   );
 
   const embeddingQuery = buildExpandedEmbeddingQuery(
-    normalizedQuery,
+    retrievalQuery,
     queryAnalysis.keywords,
     queryAnalysis.expandedTerms
   );
 
-  const rankingQuery = buildRankingQuery(queryAnalysis);
+  const rankingQuery = buildRankingQuery({
+    ...queryAnalysis,
+    normalized: retrievalQuery,
+  });
 
   const embedding = await generateQueryEmbedding(embeddingQuery);
 
@@ -353,27 +371,31 @@ export async function retrieve(
   const ranked = rankRankedChunks(
     fusedHits,
     documentMeta,
-    normalizedQuery,
+    retrievalQuery,
     rankingQuery
   );
 
   const rerankResult = await rerankerService.rerank({
-    query: normalizedQuery,
+    query: retrievalQuery,
     candidates: ranked,
     documentMeta,
   });
 
   const preciseChunks = applyPrecisionFilters(rerankResult.chunks, {
-    normalizedQuery,
+    normalizedQuery: retrievalQuery,
     keywords: queryAnalysis.keywords,
     entities: queryAnalysis.entities,
     documentMeta,
+    ...(options.contentFocusedQuery
+      ? { minVectorScore: env.RAG_PRECISION_MIN_VECTOR_SCORE }
+      : {}),
   });
 
   const chunks = preciseChunks.slice(0, limit);
 
   return {
     normalizedQuery,
+    retrievalQuery,
     queryAnalysis,
     chunks,
     queryEmbeddingModel: embedding.model,

@@ -71,6 +71,10 @@ export const env = {
   PRECISION_DEDUPE_SIMILARITY: parseFloat(
     process.env.PRECISION_DEDUPE_SIMILARITY || "0.82"
   ),
+  /** Softer precision vector floor for Assistant RAG only (Search stays at PRECISION_MIN_VECTOR_SCORE) */
+  RAG_PRECISION_MIN_VECTOR_SCORE: parseFloat(
+    process.env.RAG_PRECISION_MIN_VECTOR_SCORE || "0.55"
+  ),
   RRF_K: parseInt(process.env.RRF_K || "60", 10),
   RRF_WEIGHT_VECTOR: parseFloat(process.env.RRF_WEIGHT_VECTOR || "0.6"),
   RRF_WEIGHT_KEYWORD: parseFloat(process.env.RRF_WEIGHT_KEYWORD || "0.4"),
