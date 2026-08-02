@@ -87,6 +87,8 @@ export interface RetrievalOptions {
   documentIds?: string[];
   topic?: string;
   tags?: string[];
+  /** Conversation id for request-scoped debug logs (optional) */
+  conversationId?: string;
 }
 
 export interface RetrievalResult {

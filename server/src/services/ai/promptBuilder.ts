@@ -1,23 +1,16 @@
 import { env } from "../../config/env";
 import { sanitizeUserInput } from "../../utils/markdown";
 import type { ChatMessage } from "../../types/ai";
+import {
+  composeSystemPrompt,
+  NO_ANSWER_MESSAGE,
+} from "./responseInstructionBlocks";
+import {
+  DEFAULT_RESPONSE_PLAN,
+  type ResponsePlan,
+} from "./responsePlan";
 
-export const NO_ANSWER_MESSAGE =
-  "I couldn't find that information in your saved documents.";
-
-const SYSTEM_PROMPT = `You are an AI Memory Assistant that helps users recall information from their saved documents.
-
-Rules:
-- Answer ONLY using the provided context from the user's indexed documents.
-- If the answer cannot be found in the context, respond exactly with: "${NO_ANSWER_MESSAGE}"
-- Never invent, assume, or supplement with outside knowledge.
-- Always cite which document or section your answer comes from.
-- When citing a video, include the timestamp and video title.
-- Use markdown formatting.
-- Use bullet lists when listing multiple points.
-- Use headings when the answer covers multiple topics.
-- Keep answers concise and focused on the user's question.
-- Do not mention that you are an AI unless directly asked.`;
+export { NO_ANSWER_MESSAGE };
 
 /**
  * Validate and sanitize a user question before retrieval or LLM calls.
@@ -55,9 +48,10 @@ export class QuestionValidationError extends Error {
 
 /**
  * Build the system prompt for grounded answer generation.
+ * Composes reusable grounding + style + length + format blocks.
  */
-export function buildSystemPrompt(): string {
-  return SYSTEM_PROMPT;
+export function buildSystemPrompt(plan?: ResponsePlan): string {
+  return composeSystemPrompt(plan ?? DEFAULT_RESPONSE_PLAN);
 }
 
 /**
@@ -72,7 +66,7 @@ ${context}
 
 Question: ${question}
 
-Answer using only the context above. Cite document names when referencing specific information.`;
+Answer using only the context above. Start with a single H1 "# Topic Name". Answer the question immediately in the first paragraph after the title. Write like a teacher; synthesize (do not copy sentences or repeat overlapping facts). Use uppercase H2 sections only when they help readability, choosing from: ## HOW IT WORKS, ## WHY IT MATTERS, ## KEY POINTS, ## EXAMPLE, ## APPLICATIONS, ## KEY DIFFERENCES, ## STEPS. Prefer short paragraphs; selectively bold important terms only; bullets for facts; numbered lists for procedures; tables for comparisons. Use fenced code blocks with a language tag only when code exists in the context or the user asks for code — never invent code. Leave one blank line between headings, paragraphs, lists, and code blocks. If context is incomplete, say what the documents support. Never mention filenames in the body, never start with "According to…", never use "Source 1". Always end with a single ## SOURCES section listing only deduplicated filenames and pages.`;
 }
 
 /**
@@ -82,10 +76,11 @@ Answer using only the context above. Cite document names when referencing specif
 export function buildAnswerMessages(
   question: string,
   context: string,
-  priorMessages?: Array<{ role: "user" | "assistant"; content: string }>
+  priorMessages?: Array<{ role: "user" | "assistant"; content: string }>,
+  plan?: ResponsePlan
 ): ChatMessage[] {
   const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt() },
+    { role: "system", content: buildSystemPrompt(plan) },
   ];
 
   if (priorMessages?.length) {

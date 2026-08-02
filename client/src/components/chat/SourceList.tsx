@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ChatSource } from '../../types/chat'
-import { prepareSources } from '../../utils/chatSources'
+import { formatSourcePages, prepareSources } from '../../utils/chatSources'
 
 const INITIAL_VISIBLE = 3
 
@@ -31,10 +31,9 @@ function SourceList({ sources }: SourceListProps) {
           >
             <p className="font-medium text-text">
               {source.documentName}
-              {typeof source.page === 'number' ? (
+              {source.pages.length > 0 ? (
                 <span className="text-text-muted font-normal">
-                  {' '}
-                  · p. {source.page}
+                  {formatSourcePages(source.pages)}
                 </span>
               ) : null}
             </p>

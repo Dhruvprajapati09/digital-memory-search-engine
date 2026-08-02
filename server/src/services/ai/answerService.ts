@@ -10,6 +10,7 @@ import {
   QuestionValidationError,
   validateQuestion,
 } from "./promptBuilder";
+import { detectResponsePlan } from "./responsePlan";
 import { retrieveRelevantChunks } from "../retrieval/retrievalService";
 import { env } from "../../config/env";
 import { AppError } from "../../middleware/error.middleware";
@@ -74,6 +75,22 @@ export async function generateAnswer(
     throw new AppError("topK must be between 1 and 50", 400);
   }
 
+  const responsePlan = detectResponsePlan(question);
+  const priorMessages = request.priorMessages ?? [];
+  const priorHasNoResults = priorMessages.some((m) =>
+    m.content.includes("couldn't find that information")
+  );
+
+  console.log("[rag/answer]", {
+    conversationId: request.conversationId ?? null,
+    question,
+    styles: responsePlan.styles,
+    length: responsePlan.length,
+    format: responsePlan.format,
+    priorCount: priorMessages.length,
+    priorHasNoResults,
+  });
+
   let retrieval;
 
   try {
@@ -83,6 +100,7 @@ export async function generateAnswer(
       limit: topK,
       minScore: env.RAG_MIN_SCORE,
       documentIds: request.documentIds,
+      conversationId: request.conversationId,
     });
   } catch (err) {
     throw mapServiceError(err);
@@ -91,6 +109,12 @@ export async function generateAnswer(
   const { chunks: rawChunks } = retrieval;
 
   if (rawChunks.length === 0) {
+    console.log("[rag/answer]", {
+      conversationId: request.conversationId ?? null,
+      question,
+      chunkCount: 0,
+      noResults: true,
+    });
     return {
       success: true,
       answer: `${NO_ANSWER_MESSAGE} Try uploading and indexing more documents, or rephrase your question.`,
@@ -111,11 +135,26 @@ export async function generateAnswer(
 
   try {
     completion = await generateChatCompletion(
-      buildAnswerMessages(question, context, request.priorMessages)
+      buildAnswerMessages(
+        question,
+        context,
+        request.priorMessages,
+        responsePlan
+      )
     );
   } catch (err) {
     throw mapServiceError(err);
   }
+
+  console.log("[rag/answer]", {
+    conversationId: request.conversationId ?? null,
+    question,
+    chunkCount: rawChunks.length,
+    noResults: false,
+    answerIsNoAnswer: completion.answer.includes(
+      "couldn't find that information"
+    ),
+  });
 
   return {
     success: true,

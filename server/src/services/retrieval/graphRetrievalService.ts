@@ -126,13 +126,22 @@ export function resetGraphRetrievalCache(): void {
   graphCache.clear();
 }
 
-function buildCacheKey(options: GraphRetrievalOptions): string {
+/** Test helper: current in-memory graph cache entry count */
+export function getGraphRetrievalCacheSize(): number {
+  return graphCache.size;
+}
+
+export function buildGraphCacheKey(options: GraphRetrievalOptions): string {
+  const sorted = (values: string[]) =>
+    [...values].map((v) => v.toLowerCase()).sort();
+
   return JSON.stringify({
     userId: options.userId,
     q: options.queryAnalysis.normalized,
-    entities: options.queryAnalysis.entities,
-    keywords: options.queryAnalysis.keywords,
-    topic: options.queryAnalysis.metadataHints.topic,
+    entities: sorted(options.queryAnalysis.entities),
+    keywords: sorted(options.queryAnalysis.keywords),
+    expandedTerms: sorted(options.queryAnalysis.expandedTerms),
+    topic: options.queryAnalysis.metadataHints.topic ?? null,
     documentIds: [...(options.documentIds ?? [])].sort(),
     limit: options.limit ?? env.GRAPH_RETRIEVAL_CANDIDATES,
     maxDepth: options.maxDepth ?? env.GRAPH_RETRIEVAL_MAX_DEPTH,
@@ -538,7 +547,7 @@ export async function retrieveGraphChunks(
     };
   }
 
-  const cacheKey = buildCacheKey(options);
+  const cacheKey = buildGraphCacheKey(options);
   const cached = graphCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     const result = cloneResult(cached.result);
@@ -551,15 +560,11 @@ export async function retrieveGraphChunks(
   const seedNodes = await loadSeedNodes(options, seedTerms, limit);
 
   if (seedNodes.length === 0) {
-    const result = {
+    // Do not cache empty misses — avoids poisoning the next request
+    return {
       hits: [],
       debug: emptyDebug(true, startedAt, maxDepth),
     };
-    graphCache.set(cacheKey, {
-      expiresAt: Date.now() + env.GRAPH_RETRIEVAL_CACHE_TTL_MS,
-      result,
-    });
-    return result;
   }
 
   const traversal = await traverseGraph(options.userId, seedNodes, maxDepth);
@@ -625,10 +630,13 @@ export async function retrieveGraphChunks(
     },
   };
 
-  graphCache.set(cacheKey, {
-    expiresAt: Date.now() + env.GRAPH_RETRIEVAL_CACHE_TTL_MS,
-    result: cloneResult(result),
-  });
+  // Only cache non-empty graph hits
+  if (result.hits.length > 0) {
+    graphCache.set(cacheKey, {
+      expiresAt: Date.now() + env.GRAPH_RETRIEVAL_CACHE_TTL_MS,
+      result: cloneResult(result),
+    });
+  }
 
   return result;
 }

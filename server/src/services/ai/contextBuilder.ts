@@ -83,20 +83,55 @@ function resolveSourceType(chunk: RetrievedChunk): string {
 }
 
 /**
- * Format a single chunk into a context block with full metadata (Phase 3).
+ * Prefer uploaded filename over generic document titles for citations.
  */
-export function formatChunkBlock(chunk: RetrievedChunk, index: number): string {
+export function resolveDocumentDisplayName(chunk: RetrievedChunk): string {
+  const meta = chunk.metadata as Record<string, unknown>;
+  const candidates = [
+    meta.originalFileName,
+    meta.documentName,
+    meta.documentTitle,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "Untitled";
+}
+
+function buildBracketLabel(chunk: RetrievedChunk): string {
+  const displayName = resolveDocumentDisplayName(chunk);
+  const isVideo = isVideoChunk(chunk);
+
+  if (isVideo) {
+    const videoTs = resolveVideoTimestamp(chunk);
+    const parts = [`Video: ${displayName}`];
+    if (videoTs.formatted) parts.push(`Timestamp: ${videoTs.formatted}`);
+    return `[${parts.join(" | ")}]`;
+  }
+
+  const page = resolvePageNumber(chunk);
+  const parts = [`Document: ${displayName}`];
+  if (page !== undefined) parts.push(`Page: ${page}`);
+  return `[${parts.join(" | ")}]`;
+}
+
+/**
+ * Format a single chunk into a context block with full metadata (Phase 3).
+ * Bracket label uses the uploaded filename so the LLM cites by name, not "Source N".
+ */
+export function formatChunkBlock(chunk: RetrievedChunk, _index?: number): string {
   const isVideo = isVideoChunk(chunk);
   const videoTs = isVideo ? resolveVideoTimestamp(chunk) : undefined;
   const confidence = resolveConfidenceScore(chunk);
+  const displayName = resolveDocumentDisplayName(chunk);
 
   const header = [
-    `[Source ${index + 1}]`,
+    buildBracketLabel(chunk),
     `Chunk ID: ${chunk.vectorId}`,
     `Source Type: ${resolveSourceType(chunk)}`,
-    chunk.metadata.documentTitle
-      ? `${isVideo ? "Video" : "Document"}: ${chunk.metadata.documentTitle}`
-      : null,
+    `${isVideo ? "Video" : "Document"}: ${displayName}`,
     isVideo && chunk.metadata.channel
       ? `Channel: ${chunk.metadata.channel}`
       : null,
@@ -164,7 +199,7 @@ export function limitChunksByTokenBudget(
 
   for (const chunk of chunks) {
     const headerTokens = calculateTokens(
-      `[Source] ${chunk.metadata.documentTitle ?? ""} ${chunk.title ?? ""}`
+      `[Document] ${resolveDocumentDisplayName(chunk)} ${chunk.title ?? ""}`
     );
     const bodyTokens = calculateTokens(chunk.text);
     const chunkTokens = headerTokens + bodyTokens + 8;
@@ -207,7 +242,7 @@ export function buildSourcesFromChunks(chunks: RetrievedChunk[]): AiSource[] {
 
     return {
       documentId: chunk.metadata.documentId,
-      documentName: chunk.metadata.documentTitle ?? "Untitled",
+      documentName: resolveDocumentDisplayName(chunk),
       type: isVideo ? "video" : "document",
       page: isVideo ? undefined : resolvePageNumber(chunk),
       chunkId: chunk.vectorId,
@@ -237,7 +272,7 @@ export function buildChunkDetails(chunks: RetrievedChunk[]): AiChunkDetail[] {
       chunkId: chunk.vectorId,
       chunkIndex: chunk.metadata.chunkIndex,
       documentId: chunk.metadata.documentId,
-      documentName: chunk.metadata.documentTitle ?? "Untitled",
+      documentName: resolveDocumentDisplayName(chunk),
       type: isVideo ? "video" : "document",
       score: Math.round(chunk.score * 100) / 100,
       text: chunk.text,
