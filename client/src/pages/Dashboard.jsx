@@ -1,24 +1,25 @@
 import { useEffect, useState } from 'react'
-import Card from '../components/ui/Card'
 import Spinner from '../components/ui/Spinner'
-import { fetchDocumentStats } from '../services/documentService'
+import { useAuth } from '../hooks/useAuth'
+import { fetchDocumentStats, fetchDocuments } from '../services/documentService'
 import { fetchSearchStats } from '../services/searchService'
-
-function StatCard({ label, value, icon }) {
-  return (
-    <Card className="flex items-center gap-4">
-      <div className="p-3 rounded-lg bg-primary-50 text-primary-600 border border-border">
-        {icon}
-      </div>
-      <div>
-        <p className="text-sm text-text-muted">{label}</p>
-        <p className="text-2xl font-semibold text-text font-display">{value}</p>
-      </div>
-    </Card>
-  )
-}
+import { listConversations } from '../services/chatService'
+import WelcomeSection from '../components/dashboard/WelcomeSection'
+import OverviewCards from '../components/dashboard/OverviewCards'
+import SearchActivityChart from '../components/dashboard/SearchActivityChart'
+import RecentActivityList from '../components/dashboard/RecentActivityList'
+import RecentMemoriesList from '../components/dashboard/RecentMemoriesList'
+import MemoryStatusPanel from '../components/dashboard/MemoryStatusPanel'
+import { MOCK_SEARCH_ACTIVITY } from '../components/dashboard/mockDashboardData'
+import {
+  getGreetingName,
+  getRecentMemories,
+  buildRecentActivity,
+  getMemoryStatus,
+} from '../components/dashboard/dashboardUtils'
 
 function Dashboard() {
+  const { user } = useAuth()
   const [stats, setStats] = useState({
     totalDocuments: 0,
     totalExtracted: 0,
@@ -28,19 +29,48 @@ function Dashboard() {
     searchesToday: 0,
     averageResultsReturned: 0,
   })
+  const [aiChats, setAiChats] = useState(0)
+  const [documents, setDocuments] = useState([])
+  const [conversations, setConversations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [sectionError, setSectionError] = useState({
+    documents: '',
+    conversations: '',
+  })
 
   useEffect(() => {
     async function loadStats() {
       setLoading(true)
       setError('')
+      setSectionError({ documents: '', conversations: '' })
 
       try {
-        const [docStats, searchStats] = await Promise.all([
-          fetchDocumentStats(),
-          fetchSearchStats(),
-        ])
+        const [docStats, searchStats, documentsResult, conversationsResult] =
+          await Promise.all([
+            fetchDocumentStats(),
+            fetchSearchStats(),
+            fetchDocuments().then(
+              (docs) => ({ ok: true, docs }),
+              (err) => ({
+                ok: false,
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : 'Failed to load recent memories.',
+              }),
+            ),
+            listConversations().then(
+              (data) => ({ ok: true, data }),
+              (err) => ({
+                ok: false,
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : 'Failed to load AI chats.',
+              }),
+            ),
+          ])
 
         setStats({
           ...docStats,
@@ -48,6 +78,29 @@ function Dashboard() {
           searchesToday: searchStats.searchesToday,
           averageResultsReturned: searchStats.averageResultsReturned,
         })
+
+        if (documentsResult.ok) {
+          setDocuments(documentsResult.docs)
+        } else {
+          setDocuments([])
+          setSectionError((prev) => ({
+            ...prev,
+            documents: documentsResult.error,
+          }))
+        }
+
+        if (conversationsResult.ok) {
+          const chats = conversationsResult.data.conversations || []
+          setConversations(chats)
+          setAiChats(chats.length)
+        } else {
+          setConversations([])
+          setAiChats(0)
+          setSectionError((prev) => ({
+            ...prev,
+            conversations: conversationsResult.error,
+          }))
+        }
       } catch (err) {
         setError(
           err instanceof Error ? err.message : 'Failed to load dashboard stats.',
@@ -60,13 +113,16 @@ function Dashboard() {
     loadStats()
   }, [])
 
-  return (
-    <div>
-      <h1 className="text-2xl sm:text-3xl font-semibold text-text mb-2">Dashboard</h1>
-      <p className="text-sm text-text-muted mb-6">
-        Overview of your documents, search index, and search activity.
-      </p>
+  const greetingName = getGreetingName(user)
+  const readyCount = stats.totalIndexed || stats.totalDocuments
+  const recentMemories = getRecentMemories(documents, 5)
+  const activities = buildRecentActivity(documents, conversations)
+  const memoryStatus = getMemoryStatus(documents, stats)
+  const lastUpdated =
+    memoryStatus.lastUpdated || (!loading && !error ? new Date().toISOString() : null)
 
+  return (
+    <div className="space-y-6">
       {loading && (
         <div className="flex justify-center py-12">
           <Spinner label="Loading dashboard" />
@@ -74,48 +130,48 @@ function Dashboard() {
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-danger mb-6">{error}</p>
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
       )}
 
       {!loading && !error && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            label="Total Searches"
-            value={stats.totalSearches}
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            }
+        <>
+          <WelcomeSection name={greetingName} readyCount={readyCount} />
+
+          <OverviewCards
+            documents={stats.totalDocuments}
+            searches={stats.totalSearches}
+            aiChats={aiChats}
           />
-          <StatCard
-            label="Searches Today"
-            value={stats.searchesToday}
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Avg Results Returned"
-            value={stats.averageResultsReturned}
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            }
-          />
-          <StatCard
-            label="Indexed Documents"
-            value={stats.totalIndexed}
-            icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            }
-          />
-        </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* TODO: Pass real daily search series when analytics API exists. */}
+            <SearchActivityChart data={MOCK_SEARCH_ACTIVITY} />
+            <RecentActivityList
+              activities={activities}
+              empty={activities.length === 0}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <RecentMemoriesList
+              memories={recentMemories}
+              empty={recentMemories.length === 0 && !sectionError.documents}
+              error={sectionError.documents}
+            />
+            <MemoryStatusPanel
+              status={memoryStatus}
+              lastUpdated={lastUpdated}
+            />
+          </div>
+
+          {sectionError.conversations && (
+            <p role="status" className="text-xs text-text-muted">
+              AI chat count may be incomplete: {sectionError.conversations}
+            </p>
+          )}
+        </>
       )}
     </div>
   )
