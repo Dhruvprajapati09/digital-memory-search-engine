@@ -69,58 +69,43 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt();
     expect(prompt).toContain("Answer ONLY using the provided context");
     expect(prompt).toContain('Never use numeric labels like "Source 1"');
-    expect(prompt).toContain("# Topic Name");
+    expect(prompt).toContain("Answer the user's question directly first");
     expect(prompt).toContain(STYLE_BLOCKS.explanation);
     expect(prompt).toContain(LENGTH_BLOCKS.normal);
     expect(prompt).toContain(FORMAT_BLOCKS.paragraph);
   });
 
-  it("requires H1 title and first-paragraph answer", () => {
-    const prompt = buildSystemPrompt();
-    expect(prompt).toContain('Always start with a single H1 title: "# Topic Name"');
-    expect(prompt).toContain(
-      "Answer the user's question immediately in the first paragraph after the H1"
-    );
-  });
-
-  it("uses adaptive uppercase H2 sections and always ends with ## SOURCES", () => {
-    const prompt = buildSystemPrompt();
-    expect(prompt).toContain("## HOW IT WORKS");
-    expect(prompt).toContain("## WHY IT MATTERS");
-    expect(prompt).toContain("## KEY POINTS");
-    expect(prompt).toContain("## EXAMPLE");
-    expect(prompt).toContain("## APPLICATIONS");
-    expect(prompt).toContain("## KEY DIFFERENCES");
-    expect(prompt).toContain("## STEPS");
-    expect(prompt).toContain("omit unused ones");
-    expect(prompt).toContain('Always end with a single "## SOURCES" section');
-    expect(prompt).toContain("deduplicated");
-  });
-
-  it("uses teacher-like GFM formatting and citation rules", () => {
+  it("uses teacher-like teach-first citation and synthesis rules", () => {
     const prompt = buildSystemPrompt();
     expect(prompt).not.toContain("Always cite which document");
     expect(prompt).not.toContain("ChatGPT");
     expect(prompt).not.toContain("NotebookLM");
-    expect(prompt).toContain("Write like a teacher, not a document summarizer");
+    expect(prompt).toContain("natural, teacher-like style");
     expect(prompt).toContain("Never start with \"According to");
-    expect(prompt).toContain(
-      "Never mention filenames inside the explanation body"
-    );
-    expect(prompt).toContain("Synthesize information from all provided chunks");
+    expect(prompt).toContain("Never mention filenames inside the explanation body");
+    expect(prompt).toContain("Sources section");
+    expect(prompt).toContain("deduplicated");
+    expect(prompt).toContain("Synthesize information");
+    expect(prompt).toContain("Do not copy document sentences verbatim");
     expect(prompt).toContain("do not repeat the same information");
+  });
+
+  it("uses intent-adaptive opening and minimal structure", () => {
+    const prompt = buildSystemPrompt();
+    expect(prompt).toContain("For concept questions");
+    expect(prompt).toContain("do not force a definition");
+    expect(prompt).toContain("Choose the smallest structure needed");
+    expect(prompt).toContain("Do not force optional sections");
+    expect(prompt).toContain("Prefer short paragraphs");
+    expect(prompt).toContain("Use bullets only when they help scanability");
+    expect(prompt).toContain("Use tables only for comparisons");
+    expect(prompt).toContain("Use code blocks only for actual code");
     expect(prompt).toContain(
-      "Selectively bold important concepts and technical terms only"
+      "genuinely help explain the concept"
     );
-    expect(prompt).toContain("never bold entire sentences");
-    expect(prompt).toContain(
-      "Leave one blank line between headings, paragraphs, lists, and code blocks"
-    );
-    expect(prompt).toContain("fenced code blocks");
-    expect(prompt).toContain(
-      "only when code exists in the retrieved context or the user explicitly asks for code"
-    );
-    expect(prompt).toContain("Never invent code");
+    expect(prompt).toContain("concise by default");
+    expect(prompt).toContain("do not pretend the answer is complete");
+    expect(prompt).not.toContain("Title →");
   });
 
   it("does not instruct the LLM to emit the canned no-answer message", () => {
@@ -137,18 +122,16 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("Mention a filename inline");
   });
 
-  it("user prompt matches canonical GFM teacher-style rules", () => {
+  it("user prompt matches teacher-style direct-answer rules", () => {
     const messages = buildAnswerMessages("What is X?", "Context about X");
     const user = messages[1].content;
-    expect(user).toContain('# Topic Name');
-    expect(user).toContain("first paragraph");
-    expect(user).toContain("## HOW IT WORKS");
-    expect(user).toContain("## KEY DIFFERENCES");
-    expect(user).toContain("## STEPS");
-    expect(user).toContain("## SOURCES");
-    expect(user).toContain("Write like a teacher");
-    expect(user).toContain('never use "Source 1"');
-    expect(user).toContain("According to");
+    expect(user).toContain('Never use numeric labels like "Source 1"');
+    expect(user).toContain("Answer the question directly first");
+    expect(user).toContain("teacher-like style");
+    expect(user).toContain("smallest useful structure");
+    expect(user).toContain("Sources section at the end");
+    expect(user).toContain("do not pretend completeness");
+    expect(user).toContain("Concise by default");
     expect(user).not.toContain(
       "Cite using the document filenames from the context labels"
     );
@@ -163,6 +146,5 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(STYLE_BLOCKS.comparison);
     expect(prompt).toContain(LENGTH_BLOCKS.short);
     expect(prompt).toContain(FORMAT_BLOCKS.table);
-    expect(prompt).toContain("## KEY DIFFERENCES");
   });
 });
