@@ -8,8 +8,6 @@ import SearchHistoryPanel from '../components/SearchHistory'
 import { useSearchQuery } from '../hooks/useSearch'
 import type { SearchOptions, SearchParams } from '../types/search'
 
-const DEBOUNCE_MS = 400
-
 function SearchPage() {
   const [inputValue, setInputValue] = useState('')
   const [submittedQuery, setSubmittedQuery] = useState('')
@@ -54,19 +52,6 @@ function SearchPage() {
     setSearched(false)
     setPage(1)
   }
-
-  useEffect(() => {
-    if (!searched || !inputValue.trim()) return
-
-    const timer = window.setTimeout(() => {
-      if (inputValue.trim() !== submittedQuery) {
-        setSubmittedQuery(inputValue.trim())
-        setPage(1)
-      }
-    }, DEBOUNCE_MS)
-
-    return () => window.clearTimeout(timer)
-  }, [inputValue, searched, submittedQuery])
 
   useEffect(() => {
     if (searched && submittedQuery) {
