@@ -36,6 +36,8 @@ export interface Document {
   videoId?: string
   youtubeVideoId?: string
   videoUrl?: string
+  sourceType?: 'youtube'
+  sourceUrl?: string
   videoChannel?: string
   videoThumbnail?: string
   videoDuration?: string
