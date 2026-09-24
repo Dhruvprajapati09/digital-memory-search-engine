@@ -19,14 +19,31 @@ export const env = {
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
   BCRYPT_SALT_ROUNDS: parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10),
 
-  /** Mistral AI — required for embeddings and chat/RAG */
+  /** Mistral AI — required for embeddings */
   MISTRAL_API_KEY: requireEnv("MISTRAL_API_KEY"),
   /** Default embedding model (1024-dim vectors) */
   MISTRAL_EMBEDDING_MODEL:
     process.env.MISTRAL_EMBEDDING_MODEL || "mistral-embed",
-  /** Default chat model for RAG answer generation */
-  MISTRAL_CHAT_MODEL:
-    process.env.MISTRAL_CHAT_MODEL || "mistral-small-latest",
+  /** Embedding throughput controls for provider rate limits */
+  MISTRAL_EMBEDDING_BATCH_SIZE: parseInt(
+    process.env.MISTRAL_EMBEDDING_BATCH_SIZE || "4",
+    10
+  ),
+  MISTRAL_EMBEDDING_BATCH_DELAY_MS: parseInt(
+    process.env.MISTRAL_EMBEDDING_BATCH_DELAY_MS || "1200",
+    10
+  ),
+  MISTRAL_EMBEDDING_MAX_RETRIES: parseInt(
+    process.env.MISTRAL_EMBEDDING_MAX_RETRIES || "6",
+    10
+  ),
+  MISTRAL_EMBEDDING_RETRY_BASE_DELAY_MS: parseInt(
+    process.env.MISTRAL_EMBEDDING_RETRY_BASE_DELAY_MS || "2000",
+    10
+  ),
+  /** Groq — chat/RAG answer generation */
+  GROQ_API_KEY: requireEnv("GROQ_API_KEY"),
+  GROQ_CHAT_MODEL: process.env.GROQ_CHAT_MODEL || "llama-3.3-70b-versatile",
 
   /** Pinecone — required for vector storage and similarity search */
   PINECONE_API_KEY: requireEnv("PINECONE_API_KEY"),
@@ -160,10 +177,8 @@ export const env = {
   MAX_CONTEXT_TOKENS: parseInt(process.env.MAX_CONTEXT_TOKENS || "4000", 10),
   MAX_OUTPUT_TOKENS: parseInt(process.env.MAX_OUTPUT_TOKENS || "1024", 10),
   /** Chat temperature (0 = deterministic, 1 = creative) */
-  MISTRAL_CHAT_TEMPERATURE: parseFloat(
-    process.env.MISTRAL_CHAT_TEMPERATURE ||
-      process.env.OPENAI_TEMPERATURE ||
-      "0.2"
+  GROQ_CHAT_TEMPERATURE: parseFloat(
+    process.env.GROQ_CHAT_TEMPERATURE || "0.2"
   ),
   /** LLM request timeout in milliseconds */
   AI_REQUEST_TIMEOUT_MS: parseInt(

@@ -15,6 +15,11 @@ export interface ConversationSourceDto {
   documentName: string;
   preview: string;
   page?: number;
+  type?: "document" | "video";
+  timestamp?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+  youtubeVideoId?: string;
 }
 
 export interface ConversationMessageDto {
@@ -31,6 +36,8 @@ export interface ConversationSummaryDto {
   title: string;
   updatedAt: string;
   createdAt?: string;
+  documentIds?: string[];
+  scopeTitle?: string;
 }
 
 export interface ConversationDto {
@@ -39,6 +46,13 @@ export interface ConversationDto {
   messages: ConversationMessageDto[];
   createdAt: string;
   updatedAt: string;
+  documentIds?: string[];
+  scopeTitle?: string;
+}
+
+export interface CreateConversationRequest {
+  documentIds?: string[];
+  title?: string;
 }
 
 export interface AskInConversationRequest {

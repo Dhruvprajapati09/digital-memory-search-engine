@@ -11,6 +11,7 @@ interface RawTranscriptItem {
   text: string;
   offset: number;
   duration: number;
+  lang?: string;
 }
 
 /**
@@ -23,7 +24,7 @@ export async function fetchTranscript(
   let rawItems: RawTranscriptItem[];
 
   try {
-    rawItems = await fetchTranscriptWithTimeout(videoId, preferredLanguage);
+    rawItems = await fetchTranscriptWithFallbacks(videoId, preferredLanguage);
   } catch (err) {
     throw mapTranscriptError(err);
   }
@@ -35,9 +36,12 @@ export async function fetchTranscript(
     );
   }
 
+  const timingScale = inferTimingScale(rawItems);
+  const transcriptLanguage = rawItems.find((item) => item.lang)?.lang;
+
   const segments: TranscriptSegment[] = rawItems.map((item) => {
-    const startSeconds = item.offset / 1000;
-    const durationSeconds = item.duration / 1000;
+    const startSeconds = item.offset / timingScale;
+    const durationSeconds = item.duration / timingScale;
     const endSeconds = startSeconds + durationSeconds;
 
     return {
@@ -48,7 +52,10 @@ export async function fetchTranscript(
     };
   });
 
-  const cleaned = cleanTranscript(segments, preferredLanguage);
+  const cleaned = cleanTranscript(
+    segments,
+    transcriptLanguage ?? preferredLanguage
+  );
 
   if (
     env.MAX_TRANSCRIPT_SIZE > 0 &&
@@ -67,13 +74,55 @@ export async function fetchTranscript(
   return cleaned;
 }
 
+async function fetchTranscriptWithFallbacks(
+  videoId: string,
+  preferredLanguage?: string
+): Promise<RawTranscriptItem[]> {
+  const languages = buildLanguageFallbacks(preferredLanguage);
+  let lastError: unknown;
+
+  for (const language of languages) {
+    try {
+      const items = await fetchTranscriptWithTimeout(videoId, language);
+      if (items.length > 0) return items;
+    } catch (err) {
+      lastError = err;
+
+      if (!shouldTryNextLanguage(err)) {
+        throw err;
+      }
+    }
+  }
+
+  if (lastError) throw lastError;
+  return [];
+}
+
+function buildLanguageFallbacks(preferredLanguage?: string): Array<string | undefined> {
+  const fallbacks: Array<string | undefined> = [];
+  const normalized = preferredLanguage?.trim();
+
+  if (normalized) {
+    fallbacks.push(normalized);
+
+    const baseLanguage = normalized.split(/[-_]/)[0];
+    if (baseLanguage && baseLanguage !== normalized) {
+      fallbacks.push(baseLanguage);
+    }
+  }
+
+  fallbacks.push(undefined);
+  return [...new Set(fallbacks)];
+}
+
 async function fetchTranscriptWithTimeout(
   videoId: string,
   preferredLanguage?: string
 ): Promise<RawTranscriptItem[]> {
-  const fetchPromise = YoutubeTranscript.fetchTranscript(videoId, {
-    lang: preferredLanguage,
-  });
+  const fetchPromise = YoutubeTranscript.fetchTranscript(
+    videoId,
+    preferredLanguage ? { lang: preferredLanguage } : undefined
+  );
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(
@@ -83,6 +132,32 @@ async function fetchTranscriptWithTimeout(
   });
 
   return Promise.race([fetchPromise, timeoutPromise]);
+}
+
+function shouldTryNextLanguage(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+
+  return (
+    lower.includes("not available language") ||
+    lower.includes("no transcripts are available in") ||
+    lower.includes("available languages")
+  );
+}
+
+function inferTimingScale(items: RawTranscriptItem[]): 1 | 1000 {
+  const maxOffset = Math.max(...items.map((item) => item.offset), 0);
+  const maxDuration = Math.max(...items.map((item) => item.duration), 0);
+  const maxExpectedSeconds =
+    env.MAX_VIDEO_DURATION_SECONDS > 0
+      ? env.MAX_VIDEO_DURATION_SECONDS + 300
+      : 24 * 60 * 60;
+
+  if (maxOffset > maxExpectedSeconds || maxDuration > 120) {
+    return 1000;
+  }
+
+  return 1;
 }
 
 function mapTranscriptError(err: unknown): AppError {
@@ -96,6 +171,7 @@ function mapTranscriptError(err: unknown): AppError {
   if (
     lower.includes("transcript is disabled") ||
     lower.includes("no transcript") ||
+    lower.includes("no transcripts are available") ||
     lower.includes("could not retrieve")
   ) {
     return new AppError(

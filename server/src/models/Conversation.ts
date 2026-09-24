@@ -5,6 +5,11 @@ export interface IConversationSource {
   documentName: string;
   preview: string;
   page?: number;
+  type?: "document" | "video";
+  timestamp?: string;
+  timestampSeconds?: number;
+  videoUrl?: string;
+  youtubeVideoId?: string;
 }
 
 export interface IConversationMessage {
@@ -20,6 +25,8 @@ export interface IConversation extends Document {
   userId: Types.ObjectId;
   title: string;
   messages: IConversationMessage[];
+  documentIds?: string[];
+  scopeTitle?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +37,11 @@ const conversationSourceSchema = new Schema<IConversationSource>(
     documentName: { type: String, required: true, default: "Untitled" },
     preview: { type: String, required: true, default: "" },
     page: { type: Number, required: false },
+    type: { type: String, enum: ["document", "video"], required: false },
+    timestamp: { type: String, required: false },
+    timestampSeconds: { type: Number, required: false },
+    videoUrl: { type: String, required: false },
+    youtubeVideoId: { type: String, required: false },
   },
   { _id: false }
 );
@@ -76,6 +88,16 @@ const conversationSchema = new Schema<IConversation>(
       trim: true,
       maxlength: 120,
       default: "New chat",
+    },
+    documentIds: {
+      type: [String],
+      default: undefined,
+    },
+    scopeTitle: {
+      type: String,
+      required: false,
+      trim: true,
+      maxlength: 200,
     },
     messages: {
       type: [conversationMessageSchema],

@@ -84,34 +84,87 @@ function extractAnswerContent(content: unknown): string {
 
   return "";
 }
+
+interface GroqChatResponse {
+  id?: string;
+  model?: string;
+  choices?: Array<{
+    message?: {
+      content?: unknown;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+async function requestGroqChatCompletion(
+  messages: ChatMessage[],
+  model: string,
+  temperature: number,
+  maxTokens: number,
+  signal?: AbortSignal
+): Promise<GroqChatResponse> {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+    signal,
+  });
+
+  const responseText = await response.text();
+  let payload: GroqChatResponse & { error?: { message?: string } };
+
+  try {
+    payload = JSON.parse(responseText) as GroqChatResponse & {
+      error?: { message?: string };
+    };
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    const providerMessage = payload.error?.message || responseText || response.statusText;
+    throw new Error(`Groq API ${response.status}: ${providerMessage}`);
+  }
+
+  return payload;
+}
+
 /**
- * Generate a chat completion using Mistral.
+ * Generate a chat completion using Groq.
  * Used by the RAG pipeline to produce grounded answers from retrieved context.
  */
 export async function generateChatCompletion(
   messages: ChatMessage[],
   options?: ChatCompletionOptions
 ): Promise<ChatCompletionResult> {
-  const model = options?.model ?? env.MISTRAL_CHAT_MODEL;
-  const temperature = options?.temperature ?? env.MISTRAL_CHAT_TEMPERATURE;
+  const model = options?.model ?? env.GROQ_CHAT_MODEL;
+  const temperature = options?.temperature ?? env.GROQ_CHAT_TEMPERATURE;
   const maxTokens = options?.maxTokens ?? env.MAX_OUTPUT_TOKENS;
   const timeoutMs = env.AI_REQUEST_TIMEOUT_MS;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
     try {
-      const client = getMistralClient();
-
       const response = await withTimeout(
-        client.chat.complete({
+        requestGroqChatCompletion(
+          messages,
           model,
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
           temperature,
           maxTokens,
-        }),
+          options?.signal
+        ),
         timeoutMs
       );
 
@@ -119,7 +172,7 @@ export async function generateChatCompletion(
       const answer = extractAnswerContent(choice?.message?.content);
 
       if (!answer) {
-        throw new Error("Mistral returned an empty chat completion");
+        throw new Error("Groq returned an empty chat completion");
       }
 
       return {
@@ -127,9 +180,9 @@ export async function generateChatCompletion(
         model: response.model ?? model,
         usage: response.usage
           ? {
-              promptTokens: response.usage.promptTokens ?? 0,
-              completionTokens: response.usage.completionTokens ?? 0,
-              totalTokens: response.usage.totalTokens ?? 0,
+              promptTokens: response.usage.prompt_tokens ?? 0,
+              completionTokens: response.usage.completion_tokens ?? 0,
+              totalTokens: response.usage.total_tokens ?? 0,
             }
           : undefined,
       };
@@ -147,14 +200,14 @@ export async function generateChatCompletion(
       }
 
       if (lastError.message.toLowerCase().includes("rate limit")) {
-        throw new Error(`Mistral rate limit exceeded: ${lastError.message}`);
+        throw new Error(`Groq rate limit exceeded: ${lastError.message}`);
       }
 
-      throw new Error(`Mistral chat API failed: ${lastError.message}`);
+      throw new Error(`Groq chat API failed: ${lastError.message}`);
     }
   }
 
-  throw lastError ?? new Error("Mistral chat completion failed");
+  throw lastError ?? new Error("Groq chat completion failed");
 }
 
 /** Validate Mistral connectivity at startup (optional health check) */

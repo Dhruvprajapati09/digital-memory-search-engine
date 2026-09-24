@@ -3,10 +3,17 @@ import { env } from "../config/env";
 import type { EmbeddingInputType } from "../types/ai";
 import type { EmbeddingResponse } from "../types/embedding";
 
-const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 1000;
-const DEFAULT_BATCH_SIZE = 16;
-const BATCH_DELAY_MS = 150;
+const MAX_RETRY_DELAY_MS = 60_000;
+
+type RetryableErrorLike = Error & {
+  status?: number;
+  statusCode?: number;
+  response?: {
+    status?: number;
+    headers?: Record<string, string | string[] | undefined>;
+  };
+  headers?: Record<string, string | string[] | undefined>;
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -16,15 +23,74 @@ function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
 
   const message = err.message.toLowerCase();
+  const status = getErrorStatus(err);
 
   return (
+    status === 429 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
     message.includes("rate limit") ||
+    message.includes("rate_limited") ||
     message.includes("timeout") ||
     message.includes("503") ||
     message.includes("502") ||
     message.includes("429") ||
     message.includes("econnreset")
   );
+}
+
+function getErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+
+  const maybeError = err as Partial<RetryableErrorLike>;
+  return maybeError.status ?? maybeError.statusCode ?? maybeError.response?.status;
+}
+
+function getHeaderValue(
+  headers: Record<string, string | string[] | undefined> | undefined,
+  headerName: string
+): string | undefined {
+  if (!headers) return undefined;
+
+  const exact = headers[headerName];
+  const lower = headers[headerName.toLowerCase()];
+  const value = exact ?? lower;
+
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseRetryAfterMs(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+
+  const maybeError = err as Partial<RetryableErrorLike>;
+  const retryAfter =
+    getHeaderValue(maybeError.headers, "retry-after") ??
+    getHeaderValue(maybeError.response?.headers, "retry-after");
+
+  if (!retryAfter) return undefined;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+
+  const dateMs = Date.parse(retryAfter);
+  if (Number.isNaN(dateMs)) return undefined;
+
+  return Math.max(0, dateMs - Date.now());
+}
+
+function getRetryDelayMs(err: unknown, attempt: number): number {
+  const retryAfterMs = parseRetryAfterMs(err);
+  if (retryAfterMs !== undefined) {
+    return Math.min(retryAfterMs, MAX_RETRY_DELAY_MS);
+  }
+
+  const exponentialDelay =
+    env.MISTRAL_EMBEDDING_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+
+  return Math.min(exponentialDelay, MAX_RETRY_DELAY_MS);
 }
 
 /**
@@ -54,7 +120,7 @@ export async function generateEmbedding(
 
   let lastError: Error | null = null;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 1; attempt <= env.MISTRAL_EMBEDDING_MAX_RETRIES; attempt += 1) {
     try {
       const client = getMistralClient();
 
@@ -78,11 +144,14 @@ export async function generateEmbedding(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
 
-      if (attempt < MAX_RETRIES && isRetryableError(err)) {
-        const delay = RETRY_BASE_DELAY_MS * attempt;
+      if (
+        attempt < env.MISTRAL_EMBEDDING_MAX_RETRIES &&
+        isRetryableError(err)
+      ) {
+        const delay = getRetryDelayMs(err, attempt);
 
         console.warn(
-          `[embeddingService] Retry ${attempt}/${MAX_RETRIES} after ${delay}ms:`,
+          `[embeddingService] Retry ${attempt}/${env.MISTRAL_EMBEDDING_MAX_RETRIES} after ${delay}ms:`,
           lastError.message
         );
 
@@ -109,7 +178,7 @@ export async function generateEmbeddingsBatch(
     onProgress?: (completed: number, total: number) => void;
   }
 ): Promise<EmbeddingResponse[]> {
-  const batchSize = options?.batchSize ?? DEFAULT_BATCH_SIZE;
+  const batchSize = options?.batchSize ?? env.MISTRAL_EMBEDDING_BATCH_SIZE;
   const results: EmbeddingResponse[] = new Array(texts.length);
 
   for (let i = 0; i < texts.length; i += batchSize) {
@@ -123,7 +192,7 @@ export async function generateEmbeddingsBatch(
     options?.onProgress?.(Math.min(i + batchSize, texts.length), texts.length);
 
     if (i + batchSize < texts.length) {
-      await sleep(BATCH_DELAY_MS);
+      await sleep(env.MISTRAL_EMBEDDING_BATCH_DELAY_MS);
     }
   }
 
@@ -141,7 +210,7 @@ async function generateEmbeddingsBatchInternal(
 
   let lastError: Error | null = null;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 1; attempt <= env.MISTRAL_EMBEDDING_MAX_RETRIES; attempt += 1) {
     try {
       const client = getMistralClient();
 
@@ -173,8 +242,18 @@ async function generateEmbeddingsBatchInternal(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
 
-      if (attempt < MAX_RETRIES && isRetryableError(err)) {
-        await sleep(RETRY_BASE_DELAY_MS * attempt);
+      if (
+        attempt < env.MISTRAL_EMBEDDING_MAX_RETRIES &&
+        isRetryableError(err)
+      ) {
+        const delay = getRetryDelayMs(err, attempt);
+
+        console.warn(
+          `[embeddingService] Batch retry ${attempt}/${env.MISTRAL_EMBEDDING_MAX_RETRIES} after ${delay}ms:`,
+          lastError.message
+        );
+
+        await sleep(delay);
         continue;
       }
 
@@ -218,4 +297,4 @@ export async function validateMistralEmbeddingConfig(): Promise<{
   };
 }
 
-export { DEFAULT_BATCH_SIZE };
+export const DEFAULT_BATCH_SIZE = env.MISTRAL_EMBEDDING_BATCH_SIZE;
