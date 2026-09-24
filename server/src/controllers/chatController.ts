@@ -8,7 +8,8 @@ import {
   getConversation,
   listConversations,
 } from "../services/chat/chatService";
-import type { AskInConversationRequest, ChatRequest } from "../types/chat";
+import { getConversationalResponse } from "../services/chat/conversationIntent";
+import type { AskInConversationRequest, ChatRequest, CreateConversationRequest } from "../types/chat";
 
 export const askQuestionHandler = asyncHandler(
   async (req: Request, res: Response) => {
@@ -25,6 +26,19 @@ export const askQuestionHandler = asyncHandler(
     const documentIds = Array.isArray(body.documentIds)
       ? body.documentIds.filter((id) => typeof id === "string")
       : undefined;
+
+    const conversationalResponse = getConversationalResponse(body.question);
+    if (conversationalResponse) {
+      res.status(200).json({
+        success: true,
+        question: body.question.trim(),
+        answer: conversationalResponse.answer,
+        model: "local",
+        sources: [],
+        noResults: false,
+      });
+      return;
+    }
 
     const result = await generateRagAnswer(req.user._id.toString(), {
       question: body.question,
@@ -54,7 +68,11 @@ export const createConversationHandler = asyncHandler(
       throw new AppError("Unauthorized", 401);
     }
 
-    const conversation = await createConversation(req.user._id.toString());
+    const body = req.body as CreateConversationRequest;
+    const conversation = await createConversation(req.user._id.toString(), {
+      documentIds: Array.isArray(body?.documentIds) ? body.documentIds : undefined,
+      title: typeof body?.title === "string" ? body.title : undefined,
+    });
 
     res.status(201).json({ success: true, conversation });
   }

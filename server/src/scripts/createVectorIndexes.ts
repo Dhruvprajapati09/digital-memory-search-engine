@@ -37,7 +37,7 @@ Setup complete. Architecture:
   - Embeddings: Mistral (${env.MISTRAL_EMBEDDING_MODEL}, ${env.PINECONE_EMBEDDING_DIMENSION} dims)
   - Vectors:    Pinecone index "${env.PINECONE_INDEX_NAME}"
   - Chunks:     MongoDB (text + metadata for keyword search)
-  - Chat/RAG:   Mistral (${env.MISTRAL_CHAT_MODEL})
+  - Chat/RAG:   Groq (${env.GROQ_CHAT_MODEL})
 
 If you migrated from Gemini/MongoDB vectors, re-index all documents:
   POST /api/documents/:id/reindex for each document

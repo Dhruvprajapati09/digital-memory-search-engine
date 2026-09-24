@@ -55,7 +55,7 @@ function toVideoSummary(
 
 async function waitForIndexing(
   documentId: string,
-  timeoutMs = 120000
+  timeoutMs = 300000
 ): Promise<{ chunkCount: number; status: VideoStatus }> {
   const started = Date.now();
 
@@ -73,16 +73,31 @@ async function waitForIndexing(
     }
 
     if (document.indexStatus === "failed") {
-      throw new AppError(
-        document.indexError ?? "Failed to index video transcript",
-        500
-      );
+      throw buildVideoIndexingError(document.indexError);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   throw new AppError("Video indexing timed out", 504);
+}
+
+function buildVideoIndexingError(message?: string | null): AppError {
+  const rawMessage = message ?? "Failed to index video transcript";
+  const lower = rawMessage.toLowerCase();
+
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("rate_limited") ||
+    lower.includes("status 429")
+  ) {
+    return new AppError(
+      "Mistral rate limit reached while indexing this YouTube transcript. Wait a minute, then import again or retry indexing.",
+      429
+    );
+  }
+
+  return new AppError(rawMessage, 500);
 }
 
 /**
@@ -241,8 +256,21 @@ export async function importYouTubeVideo(
   }
 
   if (options?.waitForIndex !== false) {
-    await runIndexingForDocument(documentId);
-    const indexResult = await waitForIndexing(documentId);
+    let indexResult: { chunkCount: number; status: VideoStatus };
+
+    try {
+      await runIndexingForDocument(documentId);
+      indexResult = await waitForIndexing(documentId);
+    } catch (err) {
+      video.status = "failed";
+      video.chunkCount = 0;
+      video.statusError =
+        err instanceof Error
+          ? err.message
+          : "Failed to index video transcript";
+      await video.save();
+      throw err;
+    }
 
     video.status = indexResult.status;
     video.chunkCount = indexResult.chunkCount;

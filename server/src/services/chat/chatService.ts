@@ -10,6 +10,7 @@ import {
   validateQuestion,
 } from "../ai/promptBuilder";
 import { AppError } from "../../middleware/error.middleware";
+import { getConversationalResponse } from "./conversationIntent";
 import type {
   ConversationDto,
   ConversationMessageDto,
@@ -81,6 +82,13 @@ function toSourceDto(source: IConversationSource): ConversationSourceDto {
     documentName: source.documentName,
     preview: source.preview,
     ...(typeof source.page === "number" ? { page: source.page } : {}),
+    ...(source.type ? { type: source.type } : {}),
+    ...(source.timestamp ? { timestamp: source.timestamp } : {}),
+    ...(typeof source.timestampSeconds === "number"
+      ? { timestampSeconds: source.timestampSeconds }
+      : {}),
+    ...(source.videoUrl ? { videoUrl: source.videoUrl } : {}),
+    ...(source.youtubeVideoId ? { youtubeVideoId: source.youtubeVideoId } : {}),
   };
 }
 
@@ -96,12 +104,15 @@ function toMessageDto(message: IConversationMessage): ConversationMessageDto {
 }
 
 function toConversationDto(conversation: IConversation): ConversationDto {
+  const documentIds = (conversation.documentIds ?? []).filter(Boolean);
   return {
     _id: conversation._id.toString(),
     title: conversation.title,
     messages: (conversation.messages ?? []).map(toMessageDto),
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
+    ...(documentIds.length > 0 ? { documentIds } : {}),
+    ...(conversation.scopeTitle ? { scopeTitle: conversation.scopeTitle } : {}),
   };
 }
 
@@ -111,7 +122,25 @@ function slimSources(sources: AiSource[]): IConversationSource[] {
     documentName: source.documentName || "Untitled",
     preview: source.highlightedText || "",
     ...(typeof source.page === "number" ? { page: source.page } : {}),
+    ...(source.type ? { type: source.type } : {}),
+    ...(source.timestamp ? { timestamp: source.timestamp } : {}),
+    ...(typeof source.timestampSeconds === "number"
+      ? { timestampSeconds: source.timestampSeconds }
+      : {}),
+    ...(source.videoUrl ? { videoUrl: source.videoUrl } : {}),
+    ...(source.youtubeVideoId ? { youtubeVideoId: source.youtubeVideoId } : {}),
   }));
+}
+
+function normalizeDocumentIds(ids?: string[]): string[] {
+  if (!Array.isArray(ids)) return [];
+  const unique = new Set<string>();
+  for (const id of ids) {
+    if (typeof id === "string" && mongoose.Types.ObjectId.isValid(id)) {
+      unique.add(id);
+    }
+  }
+  return [...unique];
 }
 
 function titleFromQuestion(question: string): string {
@@ -131,25 +160,36 @@ export async function listConversations(
 ): Promise<ConversationSummaryDto[]> {
   const conversations = await ConversationModel.find({ userId })
     .sort({ updatedAt: -1 })
-    .select("title updatedAt createdAt")
+    .select("title updatedAt createdAt documentIds scopeTitle")
     .lean()
     .exec();
 
-  return conversations.map((c) => ({
-    _id: c._id.toString(),
-    title: c.title,
-    updatedAt: c.updatedAt.toISOString(),
-    createdAt: c.createdAt.toISOString(),
-  }));
+  return conversations.map((c) => {
+    const documentIds = (c.documentIds ?? []).filter(Boolean);
+    return {
+      _id: c._id.toString(),
+      title: c.title,
+      updatedAt: c.updatedAt.toISOString(),
+      createdAt: c.createdAt.toISOString(),
+      ...(documentIds.length > 0 ? { documentIds } : {}),
+      ...(c.scopeTitle ? { scopeTitle: c.scopeTitle } : {}),
+    };
+  });
 }
 
 export async function createConversation(
-  userId: string
+  userId: string,
+  options?: { documentIds?: string[]; title?: string }
 ): Promise<ConversationDto> {
+  const documentIds = normalizeDocumentIds(options?.documentIds);
+  const scopeTitle = options?.title?.trim() || undefined;
+
   const conversation = await ConversationModel.create({
     userId,
     title: "New chat",
     messages: [],
+    ...(documentIds.length > 0 ? { documentIds } : {}),
+    ...(scopeTitle ? { scopeTitle } : {}),
   });
 
   return toConversationDto(conversation);
@@ -231,11 +271,17 @@ export async function askInConversation(
     question,
   });
 
-  const answerResult = await generateAnswer(userId, {
-    question,
-    priorMessages,
-    conversationId,
-  });
+  const documentIds = (conversation.documentIds ?? []).filter(Boolean);
+
+  const conversationalResponse = getConversationalResponse(question);
+  const answerResult = conversationalResponse
+    ? { answer: conversationalResponse.answer, sources: [], noResults: false }
+    : await generateAnswer(userId, {
+        question,
+        priorMessages,
+        conversationId,
+        ...(documentIds.length > 0 ? { documentIds } : {}),
+      });
 
   console.log("[rag/chat]", {
     conversationId,

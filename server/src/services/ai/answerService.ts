@@ -25,7 +25,7 @@ const EMPTY_USAGE: TokenUsage = {
 function mapServiceError(err: unknown): AppError {
   const message = err instanceof Error ? err.message : String(err);
 
-  if (message.includes("MISTRAL_API_KEY") || message.includes("not configured")) {
+  if (message.includes("GROQ_API_KEY") || message.includes("not configured")) {
     return new AppError("AI service is not configured", 503);
   }
 
@@ -41,7 +41,7 @@ function mapServiceError(err: unknown): AppError {
     return new AppError(`Vector database error: ${message}`, 503);
   }
 
-  if (message.includes("Mistral")) {
+  if (message.includes("Groq")) {
     return new AppError(`AI service error: ${message}`, 502);
   }
 
@@ -121,7 +121,7 @@ export async function generateAnswer(
       sources: [],
       chunks: [],
       processingTime: Date.now() - startTime,
-      model: env.MISTRAL_CHAT_MODEL,
+      model: env.GROQ_CHAT_MODEL,
       usage: EMPTY_USAGE,
       noResults: true,
     };

@@ -34,8 +34,6 @@ import {
 import { validateDocumentIndex } from "./indexing/indexValidationService";
 import { resolveSafeUploadPath } from "./extractionService";
 
-const EMBEDDING_BATCH_SIZE = 8;
-
 type IndexableChunk = TopicChunk & {
   videoMetadata?: TimestampedTopicChunk["videoMetadata"];
 };
@@ -358,7 +356,7 @@ export async function runIndexingForDocument(
     );
 
     console.log(
-      `[indexingService] Generating embeddings (batch=${EMBEDDING_BATCH_SIZE}) for ${chunksToProcess.length} new/changed chunks`
+      `[indexingService] Generating embeddings (batch=${env.MISTRAL_EMBEDDING_BATCH_SIZE}) for ${chunksToProcess.length} new/changed chunks`
     );
 
     const embeddingMap = new Map<number, { vector: number[]; model: string }>();
@@ -366,7 +364,7 @@ export async function runIndexingForDocument(
     if (embeddingTexts.length > 0) {
       const embeddings = await generateEmbeddingsBatch(embeddingTexts, {
         taskType: { kind: "document" },
-        batchSize: EMBEDDING_BATCH_SIZE,
+        batchSize: env.MISTRAL_EMBEDDING_BATCH_SIZE,
         onProgress: (done, total) => {
           console.log(
             `[indexingService] Embeddings ${done}/${total} for ${documentId}`
