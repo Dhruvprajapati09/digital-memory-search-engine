@@ -24,6 +24,8 @@ export interface IDocument extends MongooseDocument {
   videoId?: mongoose.Types.ObjectId;
   youtubeVideoId?: string;
   videoUrl?: string;
+  sourceType?: "youtube";
+  sourceUrl?: string;
   videoChannel?: string;
   videoThumbnail?: string;
   videoDuration?: string;
@@ -113,6 +115,15 @@ const documentSchema = new Schema<IDocument>(
       index: true,
     },
     videoUrl: {
+      type: String,
+      trim: true,
+    },
+    sourceType: {
+      type: String,
+      enum: ["youtube"],
+      trim: true,
+    },
+    sourceUrl: {
       type: String,
       trim: true,
     },

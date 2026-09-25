@@ -45,6 +45,8 @@ function formatDocument(doc: IDocument) {
     videoId: doc.videoId?.toString(),
     youtubeVideoId: doc.youtubeVideoId,
     videoUrl: doc.videoUrl,
+    sourceType: doc.sourceType,
+    sourceUrl: doc.sourceUrl,
     videoChannel: doc.videoChannel,
     videoThumbnail: doc.videoThumbnail,
     videoDuration: doc.videoDuration,

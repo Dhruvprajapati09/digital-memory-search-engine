@@ -1,7 +1,10 @@
+import { randomUUID } from "crypto";
+import { writeFile } from "fs/promises";
 import DocumentModel from "../../models/Document";
 import VideoModel from "../../models/Video";
 import { env } from "../../config/env";
 import { AppError } from "../../middleware/error.middleware";
+import { resolveSafeUploadPath } from "../extractionService";
 import { validateYouTubeUrl } from "./youtubeValidator";
 import { fetchVideoMetadata } from "./metadataService";
 import { fetchTranscript } from "./transcriptService";
@@ -17,6 +20,39 @@ import type {
   YouTubeVideoSummary,
   VideoStatus,
 } from "../../types/youtube";
+
+function transcriptFileName(title: string): string {
+  const safeTitle = title
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
+    .trim()
+    .replace(/[. ]+$/g, "")
+    .slice(0, 180);
+
+  return `${safeTitle || "youtube-transcript"}.txt`;
+}
+
+async function persistTranscriptDocument(
+  title: string,
+  transcriptText: string,
+  existingStoredFileName?: string
+): Promise<{
+  originalFileName: string;
+  storedFileName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+}> {
+  const storedFileName = existingStoredFileName || `${randomUUID()}.txt`;
+  await writeFile(resolveSafeUploadPath(storedFileName), transcriptText, "utf8");
+
+  return {
+    originalFileName: transcriptFileName(title),
+    storedFileName,
+    filePath: `uploads/${storedFileName}`,
+    fileSize: Buffer.byteLength(transcriptText, "utf8"),
+    mimeType: "text/plain",
+  };
+}
 
 function toVideoSummary(
   video: {
@@ -215,16 +251,29 @@ export async function importYouTubeVideo(
 
   if (video.documentId) {
     document = await DocumentModel.findById(video.documentId);
+  }
 
-    if (document) {
-      document.title = metadata.title;
-      document.extractedText = transcriptText;
-      document.extractionStatus = "completed";
-      document.extractionError = null;
-      document.indexStatus = "pending";
-      document.indexError = null;
-      await document.save();
-    }
+  const transcriptDocument = await persistTranscriptDocument(
+    metadata.title,
+    transcriptText,
+    document?.storedFileName
+  );
+
+  if (document) {
+    document.title = metadata.title;
+    document.originalFileName = transcriptDocument.originalFileName;
+    document.storedFileName = transcriptDocument.storedFileName;
+    document.filePath = transcriptDocument.filePath;
+    document.fileSize = transcriptDocument.fileSize;
+    document.mimeType = transcriptDocument.mimeType;
+    document.sourceType = "youtube";
+    document.sourceUrl = normalizedUrl;
+    document.extractedText = transcriptText;
+    document.extractionStatus = "completed";
+    document.extractionError = null;
+    document.indexStatus = "pending";
+    document.indexError = null;
+    await document.save();
   }
 
   if (!document) {
@@ -232,12 +281,19 @@ export async function importYouTubeVideo(
       userId,
       title: metadata.title,
       type: "video",
+      originalFileName: transcriptDocument.originalFileName,
+      storedFileName: transcriptDocument.storedFileName,
+      filePath: transcriptDocument.filePath,
+      fileSize: transcriptDocument.fileSize,
+      mimeType: transcriptDocument.mimeType,
       extractedText: transcriptText,
       extractionStatus: "completed",
       indexStatus: "pending",
       videoId: video._id,
       youtubeVideoId: videoId,
       videoUrl: normalizedUrl,
+      sourceType: "youtube",
+      sourceUrl: normalizedUrl,
       videoChannel: metadata.channel,
       videoThumbnail: metadata.thumbnail,
       videoDuration: metadata.duration,
