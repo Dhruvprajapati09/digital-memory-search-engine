@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import DocumentModel, { DocumentType } from "../../models/Document";
 import { generateQueryEmbedding } from "../embeddingService";
 import { vectorStore } from "../vectorStoreService";
+import type { EmbeddingResponse, VectorSearchResult } from "../../types/embedding";
 import { fuseSearchResults } from "../search/hybridSearchService";
 import {
   rankRankedChunks,
@@ -343,18 +344,30 @@ export async function retrieve(
     normalized: retrievalQuery,
   });
 
-  const embedding = await generateQueryEmbedding(embeddingQuery);
+  let embedding: EmbeddingResponse | null = null;
+  try {
+    embedding = await generateQueryEmbedding(embeddingQuery);
+  } catch (embedErr) {
+    const embedMessage =
+      embedErr instanceof Error ? embedErr.message : String(embedErr);
+    console.warn(
+      "[retrieval] Query embedding failed; falling back to keyword+graph retrieval:",
+      embedMessage
+    );
+  }
 
   const [vectorHits, keywordHits, graphResult] = await Promise.all([
-    vectorStore.searchVector({
-      vector: embedding.vector,
-      userId: options.userId,
-      limit: candidateLimit,
-      minScore: minVectorScore,
-      documentIds,
-      topic: filterTopic,
-      tags: filterTags,
-    }),
+    embedding
+      ? vectorStore.searchVector({
+          vector: embedding.vector,
+          userId: options.userId,
+          limit: candidateLimit,
+          minScore: minVectorScore,
+          documentIds,
+          topic: filterTopic,
+          tags: filterTags,
+        })
+      : Promise.resolve([] as VectorSearchResult[]),
     vectorStore.searchKeyword({
       query: keywordQuery,
       userId: options.userId,
@@ -427,7 +440,7 @@ export async function retrieve(
     filteredKeywords: contentTerms?.keywords,
     queryAnalysis,
     chunks,
-    queryEmbeddingModel: embedding.model,
+    queryEmbeddingModel: embedding?.model ?? "keyword-fallback",
     noDocumentsInScope: false,
     rerankDebug: rerankResult.debug,
     graphDebug: graphResult.debug,
